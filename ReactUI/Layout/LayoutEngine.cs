@@ -11,34 +11,11 @@ public static class LayoutEngine
     /// <summary>
     /// Compute layout for a root UINode and populate ScreenRect on all nodes.
     /// </summary>
-    static int _logCount;
-
     public static void ComputeLayout(UINode root, float viewportWidth, float viewportHeight)
     {
-        // Build layout tree
         var layoutRoot = BuildLayoutTree(root);
-
-        // Run flexbox
         YogaLayout.Calculate(layoutRoot, viewportWidth, viewportHeight);
-
-        // Write results back
         ApplyLayout(root, layoutRoot);
-
-        // Debug: log first few frames
-        if (_logCount++ < 3)
-            LogTree(root, 0);
-    }
-
-    static void LogTree(UINode node, int depth)
-    {
-        var indent = new string(' ', depth * 2);
-        var r = node.ScreenRect;
-        var style = node.ComputedStyle;
-        var pos = style?.Position;
-        Plugin.ReactUIPlugin.Logger.LogInfo(
-            $"[Layout] {indent}{node.Type} rect=({r.X:F0},{r.Y:F0},{r.Width:F0},{r.Height:F0}) pos={pos} bg={style?.Background.HasValue}");
-        foreach (var child in node.Children)
-            LogTree(child, depth + 1);
     }
 
     private static LayoutNode BuildLayoutTree(UINode uiNode)
@@ -81,10 +58,6 @@ public static class LayoutEngine
                 if (lines < 1) lines = 1;
                 float fitHeight = lines * fontSize * lineHeight;
 
-                if (_logCount <= 2)
-                    Plugin.ReactUIPlugin.Logger.LogInfo(
-                        $"[Measure] '{text}' maxW={maxWidth:F0} mode={widthMode} → w={fitWidth:F0} h={fitHeight:F0} lines={lines}");
-
                 return (fitWidth, fitHeight);
             };
         }
@@ -101,10 +74,6 @@ public static class LayoutEngine
 
     private static void ApplyLayout(UINode uiNode, LayoutNode layoutNode)
     {
-        if (_logCount <= 2)
-            Plugin.ReactUIPlugin.Logger.LogInfo(
-                $"[Apply] {uiNode.Type} layout=({layoutNode.ComputedX:F0},{layoutNode.ComputedY:F0},{layoutNode.ComputedWidth:F0},{layoutNode.ComputedHeight:F0}) uiChildren={uiNode.Children.Count} layoutChildren={layoutNode.Children.Count}");
-
         uiNode.ScreenRect = new Rect(
             layoutNode.ComputedX,
             layoutNode.ComputedY,

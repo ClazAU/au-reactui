@@ -39,8 +39,8 @@ public class ReactUIBehaviour : MonoBehaviour
         try
         {
             _frameCount++;
-            if (_frameCount <= 3 || _frameCount % 300 == 0)
-                ReactUIPlugin.Logger.LogInfo($"[ReactUI] Update frame {_frameCount}, roots={Core.Scheduler.GetRoots().Count}");
+            if (_frameCount == 1)
+                ReactUIPlugin.Logger.LogInfo($"[ReactUI] First Update, roots={Core.Scheduler.GetRoots().Count}");
 
             var roots = Core.Scheduler.GetRoots();
             for (int i = 0; i < roots.Count; i++)

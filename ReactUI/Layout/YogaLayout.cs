@@ -311,17 +311,8 @@ public static class YogaLayout
 
         // Apply min/max on main axis
         basis = Clamp(basis, MainMinSize(child, row), MainMaxSize(child, row));
-        float result = Max(basis, 0);
-        if (_dbgCount < 30)
-        {
-            _dbgCount++;
-            bool hasMeasure = child.MeasureFunc != null;
-            Plugin.ReactUIPlugin.Logger?.LogInfo(
-                $"[FlexBasis] row={row} basis={result:F0} hasMeasure={hasMeasure} w={child.ComputedWidth:F0} h={child.ComputedHeight:F0} children={child.Children.Count}");
-        }
-        return result;
+        return Max(basis, 0);
     }
-    static int _dbgCount;
 
     // --------------------------------------------------------- resolve a flex line (grow/shrink + cross sizes)
     private static void ResolveFlexLine(FlexLine line, LayoutNode parent, bool row,

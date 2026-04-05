@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyDescriptionAttribute("ReactUI example mod for Among Us")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+051bcac49513bfd8b2fe14e1599a40f632f0367b")]
 [assembly: System.Reflection.AssemblyProductAttribute("ReactUI.Example")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ReactUI.Example")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

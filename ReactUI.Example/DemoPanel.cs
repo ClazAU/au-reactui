@@ -35,6 +35,7 @@ public static class DemoPanel
             Position = S.PositionType.Absolute,
             Inset = new S.EdgeValues(80, float.NaN, float.NaN, 80),
             Width = 420,
+            Height = 400,
             Background = "#1a1a2eE8",
             BorderRadius = 16,
             BorderColor = "#ffffff15",
