@@ -1,3 +1,4 @@
+using System.Reflection;
 using ReactUI.Layout;
 using Xunit;
 
@@ -12,6 +13,24 @@ public class LayoutTests
         Assert.True(
             System.MathF.Abs(expected - actual) <= Tolerance,
             $"{label} expected {expected} but was {actual}");
+    }
+
+    private static void CalculateUndefined(LayoutNode node)
+    {
+        var method = typeof(YogaLayout).GetMethod(
+            "LayoutInternal",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.NotNull(method);
+
+        method!.Invoke(null, new object[]
+        {
+            node,
+            float.NaN,
+            float.NaN,
+            MeasureMode.Undefined,
+            MeasureMode.Undefined
+        });
     }
 
     // 1. Single node with no explicit size fills available space (Exactly mode)
@@ -350,5 +369,113 @@ public class LayoutTests
         float innerY = inner.ComputedY;
         AssertApprox(0, inner.Children[0].ComputedY - innerY, "InnerChild0 Y");
         AssertApprox(40, inner.Children[1].ComputedY - innerY, "InnerChild1 Y");
+    }
+
+    // 21. Auto width resolves from widest child in a column container
+    [Fact]
+    public void AutoWidth_ColumnContainer_UsesWidestChild()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Column,
+            Height = 200
+        };
+        root.AddChild(new LayoutNode { Width = 90, Height = 20 });
+        root.AddChild(new LayoutNode { Width = 140, Height = 20 });
+
+        CalculateUndefined(root);
+
+        AssertApprox(140, root.ComputedWidth, "Root Width");
+    }
+
+    // 22. Auto height resolves from stacked children in a column container
+    [Fact]
+    public void AutoHeight_ColumnContainer_UsesChildrenHeightAndGap()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Column,
+            Width = 200,
+            Gap = 8
+        };
+        root.AddChild(new LayoutNode { Height = 30 });
+        root.AddChild(new LayoutNode { Height = 50 });
+
+        CalculateUndefined(root);
+
+        AssertApprox(88, root.ComputedHeight, "Root Height");
+    }
+
+    // 23. Auto width row container resolves from total child widths + gaps
+    [Fact]
+    public void AutoWidth_RowContainer_UsesChildrenWidthAndGap()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row,
+            Height = 80,
+            Gap = 5
+        };
+        root.AddChild(new LayoutNode { Width = 50, Height = 20 });
+        root.AddChild(new LayoutNode { Width = 70, Height = 20 });
+
+        CalculateUndefined(root);
+
+        AssertApprox(125, root.ComputedWidth, "Root Width");
+    }
+
+    // 24. Auto-size container uses measured leaf dimensions
+    [Fact]
+    public void AutoSize_UsesMeasuredLeafSize()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Column,
+            AlignItems = AlignItems.FlexStart
+        };
+        root.AddChild(new LayoutNode
+        {
+            MeasureFunc = (w, wm, h, hm) => (73, 19)
+        });
+
+        CalculateUndefined(root);
+
+        AssertApprox(73, root.ComputedWidth, "Root Width");
+        AssertApprox(19, root.ComputedHeight, "Root Height");
+    }
+
+    // 25. ScreenRect positions should accumulate parent offsets
+    [Fact]
+    public void LayoutEngine_AccumulatesParentOffsetsForScreenRect()
+    {
+        var root = new ReactUI.Core.UINode("div")
+        {
+            ComputedStyle = new ReactUI.Style.Style
+            {
+                Width = ReactUI.Style.StyleValue.Px(300),
+                Height = ReactUI.Style.StyleValue.Px(300),
+                Padding = new ReactUI.Style.EdgeValues { Left = 10, Top = 20 }
+            }
+        };
+
+        var child = new ReactUI.Core.UINode("div")
+        {
+            Parent = root,
+            ComputedStyle = new ReactUI.Style.Style
+            {
+                Width = ReactUI.Style.StyleValue.Px(100),
+                Height = ReactUI.Style.StyleValue.Px(100),
+                Margin = new ReactUI.Style.EdgeValues { Left = 15, Top = 25 }
+            }
+        };
+
+        root.Children.Add(child);
+
+        LayoutEngine.ComputeLayout(root, 800, 600);
+
+        AssertApprox(25, child.ScreenRect.X, "Child ScreenRect.X");
+        AssertApprox(45, child.ScreenRect.Y, "Child ScreenRect.Y");
+        AssertApprox(100, child.ScreenRect.Width, "Child ScreenRect.Width");
+        AssertApprox(100, child.ScreenRect.Height, "Child ScreenRect.Height");
     }
 }

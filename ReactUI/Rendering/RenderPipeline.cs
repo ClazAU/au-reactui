@@ -313,68 +313,47 @@ public class RenderPipeline
     }
 
     /// <summary>
-    /// Fallback renderer for when SDF shaders aren't available.
-    /// Draws solid colored rectangles using GL immediate mode.
+    /// Fallback renderer: generates an SDF texture on CPU (cached) and draws via GUI.DrawTexture.
+    /// Supports rounded corners, borders, box shadows, gradients, and opacity.
     /// </summary>
     private void DrawFallbackRect(DrawCommand cmd)
     {
-        var bgColor = cmd.BackgroundColor.ToUnityColor();
-        bgColor.a *= cmd.Opacity;
+        int w = Mathf.CeilToInt(cmd.Rect.Width);
+        int h = Mathf.CeilToInt(cmd.Rect.Height);
+        if (w <= 0 || h <= 0) return;
 
-        // Draw box shadow as a series of expanding semi-transparent rects
-        if (cmd.Shadow.HasValue)
-        {
-            var s = cmd.Shadow.Value;
-            var shadowColor = s.Color.ToUnityColor();
-            shadowColor.a *= cmd.Opacity;
+        var generated = SdfTextureGenerator.GetOrCreate(
+            w, h,
+            cmd.BackgroundColor,
+            cmd.Gradient,
+            cmd.BorderRadiusTL, cmd.BorderRadiusTR, cmd.BorderRadiusBR, cmd.BorderRadiusBL,
+            cmd.BorderColor, cmd.BorderWidth,
+            cmd.Shadow,
+            cmd.Opacity
+        );
 
-            if (!s.Inset)
-            {
-                // Approximate gaussian shadow with layered rects
-                int layers = Mathf.Max(1, (int)(s.Blur / 2));
-                for (int i = layers; i >= 0; i--)
-                {
-                    float t = (float)i / layers;
-                    float expand = s.Spread + s.Blur * t;
-                    var layerColor = shadowColor;
-                    layerColor.a *= (1f - t) * 0.3f;
+        if (generated == null || generated.Value.Texture == null) return;
 
-                    var shadowRect = new Core.Rect(
-                        cmd.Rect.X + s.OffsetX - expand,
-                        cmd.Rect.Y + s.OffsetY - expand,
-                        cmd.Rect.Width + expand * 2,
-                        cmd.Rect.Height + expand * 2
-                    );
+        var tex = generated.Value;
 
-                    DrawSolidRect(shadowRect, layerColor);
-                }
-            }
-        }
+        // Pop GL matrix to use GUI drawing, then push back after
+        GL.PopMatrix();
 
-        // Draw background
-        if (bgColor.a > 0)
-        {
-            // Gradient: blend the two colors and draw as solid (GL per-vertex color is stripped in IL2CPP)
-            if (cmd.Gradient.HasValue && cmd.Gradient.Value.Type != Style.GradientType.None)
-            {
-                var g = cmd.Gradient.Value;
-                var blended = Color.Lerp(g.ColorA.ToUnityColor(), g.ColorB.ToUnityColor(), 0.5f);
-                blended.a *= cmd.Opacity;
-                DrawSolidRect(cmd.Rect, blended);
-            }
-            else
-            {
-                DrawSolidRect(cmd.Rect, bgColor);
-            }
-        }
+        // Account for shadow padding — texture is larger than the element rect
+        var drawRect = new UnityEngine.Rect(
+            cmd.Rect.X - tex.PaddingLeft,
+            cmd.Rect.Y - tex.PaddingTop,
+            tex.Texture.width,
+            tex.Texture.height
+        );
 
-        // Draw border
-        if (cmd.BorderWidth > 0)
-        {
-            var borderColor = cmd.BorderColor.ToUnityColor();
-            borderColor.a *= cmd.Opacity;
-            DrawBorder(cmd.Rect, cmd.BorderWidth, borderColor);
-        }
+        var style = new GUIStyle();
+        style.normal.background = tex.Texture;
+        GUI.Box(drawRect, GUIContent.none, style);
+
+        // Re-push GL matrix for subsequent commands
+        GL.PushMatrix();
+        GL.LoadPixelMatrix(0, Screen.width, Screen.height, 0);
     }
 
     /// <summary>

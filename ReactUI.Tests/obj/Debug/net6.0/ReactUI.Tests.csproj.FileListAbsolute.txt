@@ -98,3 +98,4 @@ C:\Users\xaine\RiderProjects\ClazAU\Mods\ReactUI\ReactUI.Tests\obj\Debug\net6.0\
 C:\Users\xaine\RiderProjects\ClazAU\Mods\ReactUI\ReactUI.Tests\obj\Debug\net6.0\ReactUI.Tests.pdb
 C:\Users\xaine\RiderProjects\ClazAU\Mods\ReactUI\ReactUI.Tests\obj\Debug\net6.0\ReactUI.Tests.genruntimeconfig.cache
 C:\Users\xaine\RiderProjects\ClazAU\Mods\ReactUI\ReactUI.Tests\obj\Debug\net6.0\ref\ReactUI.Tests.dll
+C:\Users\xaine\RiderProjects\ClazAU\Mods\ReactUI\ReactUI.Tests\bin\Debug\net6.0\Reactor.dll

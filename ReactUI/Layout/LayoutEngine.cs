@@ -74,6 +74,7 @@ public static class LayoutEngine
 
     private static void ApplyLayout(UINode uiNode, LayoutNode layoutNode)
     {
+        // YogaLayout.Calculate already converts ComputedX/Y to absolute screen coords
         uiNode.ScreenRect = new Rect(
             layoutNode.ComputedX,
             layoutNode.ComputedY,

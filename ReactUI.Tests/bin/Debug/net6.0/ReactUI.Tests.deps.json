@@ -292,6 +292,14 @@
           }
         }
       },
+      "Reactor/2.3.1": {
+        "runtime": {
+          "lib/net6.0/Reactor.dll": {
+            "assemblyVersion": "2.3.1.0",
+            "fileVersion": "2.3.1.0"
+          }
+        }
+      },
       "xunit/2.6.2": {
         "dependencies": {
           "xunit.assert": "2.6.2",
@@ -343,6 +351,9 @@
         }
       },
       "ReactUI/1.0.0": {
+        "dependencies": {
+          "Reactor": "2.3.1"
+        },
         "runtime": {
           "ReactUI.dll": {
             "assemblyVersion": "1.0.0.0",
@@ -399,6 +410,13 @@
       "sha512": "sha512-QWINE2x3MbTODsWT1Gh71GaGb5icBz4chS8VYvTgsBnsi8esgN6wtHhydd7fvToWECYGq7T4cgBBDiKD/363fg==",
       "path": "nuget.frameworks/6.5.0",
       "hashPath": "nuget.frameworks.6.5.0.nupkg.sha512"
+    },
+    "Reactor/2.3.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-CsFs84aM3PA6+74TzHEAUayXOosYBJEJKf1Ebs3CpL10RMLrj+WRAWrpgFoNd9qS+pIzQflW76Q5Pgg/aOQ40w==",
+      "path": "reactor/2.3.1",
+      "hashPath": "reactor.2.3.1.nupkg.sha512"
     },
     "xunit/2.6.2": {
       "type": "package",
