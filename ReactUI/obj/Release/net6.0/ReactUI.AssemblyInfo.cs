@@ -15,7 +15,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyDescriptionAttribute(("React-like UI library for IL2CPP BepInEx mods — SDF rendering, flexbox layout, vi" +
     "rtual DOM"))]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1c8a0921711c4f4c81777da5e109d12313558dbf")]
 [assembly: System.Reflection.AssemblyProductAttribute("ReactUI")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ReactUI")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

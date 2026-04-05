@@ -278,9 +278,10 @@ public static class YogaLayout
                 caw = childAvailCross;
                 cah = childAvailMain;
             }
-            LayoutInternal(child, IsNaN(caw) ? 0 : caw, IsNaN(cah) ? 0 : cah,
-                           IsNaN(caw) ? MeasureMode.Undefined : MeasureMode.AtMost,
-                           IsNaN(cah) ? MeasureMode.Undefined : MeasureMode.AtMost);
+            // Pass large available size for undefined dims so children can measure freely
+            LayoutInternal(child, IsNaN(caw) ? 100000f : caw, IsNaN(cah) ? 100000f : cah,
+                           IsNaN(caw) ? MeasureMode.AtMost : MeasureMode.AtMost,
+                           IsNaN(cah) ? MeasureMode.AtMost : MeasureMode.AtMost);
             basis = GetComputedMain(child, row);
         }
 
@@ -590,14 +591,16 @@ public static class YogaLayout
             else if (IsNaN(childW) && !IsNaN(childH)) childW = childH * child.AspectRatio;
         }
 
-        // Layout child to resolve its size
+        // Layout child to resolve its size — use AtMost for undefined dims so child sizes to content
         float aw = IsNaN(childW) ? parentW : childW;
         float ah = IsNaN(childH) ? parentH : childH;
         MeasureMode awm = IsNaN(childW) ? MeasureMode.AtMost : MeasureMode.Exactly;
         MeasureMode ahm = IsNaN(childH) ? MeasureMode.AtMost : MeasureMode.Exactly;
         LayoutInternal(child, aw, ah, awm, ahm);
 
+        // Only override computed size if we had a definite value
         if (!IsNaN(childW)) child.ComputedWidth = Max(Clamp(childW, child.MinWidth, child.MaxWidth), 0);
+        // Don't override height if it was auto — let LayoutInternal's computed value stand
         if (!IsNaN(childH)) child.ComputedHeight = Max(Clamp(childH, child.MinHeight, child.MaxHeight), 0);
 
         // Position X

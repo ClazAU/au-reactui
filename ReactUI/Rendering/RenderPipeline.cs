@@ -354,16 +354,13 @@ public class RenderPipeline
         // Draw background
         if (bgColor.a > 0)
         {
-            // If gradient, approximate with per-vertex coloring
+            // Gradient: blend the two colors and draw as solid (GL per-vertex color is stripped in IL2CPP)
             if (cmd.Gradient.HasValue && cmd.Gradient.Value.Type != Style.GradientType.None)
             {
                 var g = cmd.Gradient.Value;
-                var colorA = g.ColorA.ToUnityColor();
-                var colorB = g.ColorB.ToUnityColor();
-                colorA.a *= cmd.Opacity;
-                colorB.a *= cmd.Opacity;
-
-                DrawGradientRect(cmd.Rect, g.Angle, colorA, colorB);
+                var blended = Color.Lerp(g.ColorA.ToUnityColor(), g.ColorB.ToUnityColor(), 0.5f);
+                blended.a *= cmd.Opacity;
+                DrawSolidRect(cmd.Rect, blended);
             }
             else
             {
@@ -405,99 +402,35 @@ public class RenderPipeline
     {
         if (string.IsNullOrEmpty(cmd.Text)) return;
 
-        var textColor = cmd.TextColor;
-        float fontSize = cmd.FontSize;
-        float lineHeight = cmd.LineHeight;
+        // Must pop GL matrix before using GUI.Label, then push again after
+        GL.PopMatrix();
 
-        // Get glyph quads from the text renderer
-        var glyphs = TextRenderer.Layout(
-            cmd.Text, fontSize, cmd.Rect.Width,
-            cmd.TextAlign, lineHeight, cmd.Rect, textColor
+        var guiStyle = new GUIStyle(GUI.skin.label);
+        guiStyle.fontSize = (int)cmd.FontSize;
+        guiStyle.normal.textColor = cmd.TextColor.ToUnityColor() * new Color(1, 1, 1, cmd.Opacity);
+        guiStyle.alignment = cmd.TextAlign switch
+        {
+            Style.TextAlign.Center => TextAnchor.MiddleCenter,
+            Style.TextAlign.Right => TextAnchor.MiddleRight,
+            _ => TextAnchor.UpperLeft,
+        };
+        guiStyle.fontStyle = cmd.FontWeight >= 700 ? FontStyle.Bold : FontStyle.Normal;
+        guiStyle.wordWrap = true;
+        guiStyle.clipping = TextClipping.Clip;
+
+        // Use height=0 trick: let Unity compute height if our layout gave 0
+        float h = cmd.Rect.Height > 0 ? cmd.Rect.Height : guiStyle.CalcHeight(
+            new GUIContent(cmd.Text), cmd.Rect.Width);
+
+        GUI.Label(
+            new UnityEngine.Rect(cmd.Rect.X, cmd.Rect.Y, cmd.Rect.Width, h),
+            cmd.Text,
+            guiStyle
         );
 
-        if (glyphs.Count == 0) return;
-
-        // Get the font atlas for rendering
-        int atlasSize = System.Math.Clamp((int)fontSize, 8, 128);
-        var atlas = FontManager.GetAtlas(null, cmd.FontWeight, atlasSize);
-
-        if (_useSdfShaders && _sdfTextMaterial != null && atlas.AtlasTexture != null)
-        {
-            // SDF text rendering with the text shader
-            _sdfTextMaterial.SetTexture("_MainTex", atlas.AtlasTexture);
-            _sdfTextMaterial.SetFloat("_Opacity", cmd.Opacity);
-            _sdfTextMaterial.SetPass(0);
-
-            GL.Begin(7 /* GL.QUADS */);
-            foreach (var glyph in glyphs)
-            {
-                var c = glyph.Color.ToUnityColor();
-                c.a *= cmd.Opacity;
-                GL.Color(c);
-
-                GL.TexCoord2(glyph.UVRect.X, glyph.UVRect.Bottom);
-                GL.Vertex3(glyph.Rect.X, glyph.Rect.Y, 0);
-
-                GL.TexCoord2(glyph.UVRect.Right, glyph.UVRect.Bottom);
-                GL.Vertex3(glyph.Rect.Right, glyph.Rect.Y, 0);
-
-                GL.TexCoord2(glyph.UVRect.Right, glyph.UVRect.Y);
-                GL.Vertex3(glyph.Rect.Right, glyph.Rect.Bottom, 0);
-
-                GL.TexCoord2(glyph.UVRect.X, glyph.UVRect.Y);
-                GL.Vertex3(glyph.Rect.X, glyph.Rect.Bottom, 0);
-            }
-            GL.End();
-        }
-        else if (atlas.AtlasTexture != null)
-        {
-            // Fallback: use the font atlas texture with the fallback material
-            _fallbackMaterial?.SetTexture("_MainTex", atlas.AtlasTexture);
-            _fallbackMaterial?.SetPass(0);
-
-            GL.Begin(7 /* GL.QUADS */);
-            foreach (var glyph in glyphs)
-            {
-                var c = glyph.Color.ToUnityColor();
-                c.a *= cmd.Opacity;
-                GL.Color(c);
-
-                GL.TexCoord2(glyph.UVRect.X, glyph.UVRect.Bottom);
-                GL.Vertex3(glyph.Rect.X, glyph.Rect.Y, 0);
-
-                GL.TexCoord2(glyph.UVRect.Right, glyph.UVRect.Bottom);
-                GL.Vertex3(glyph.Rect.Right, glyph.Rect.Y, 0);
-
-                GL.TexCoord2(glyph.UVRect.Right, glyph.UVRect.Y);
-                GL.Vertex3(glyph.Rect.Right, glyph.Rect.Bottom, 0);
-
-                GL.TexCoord2(glyph.UVRect.X, glyph.UVRect.Y);
-                GL.Vertex3(glyph.Rect.X, glyph.Rect.Bottom, 0);
-            }
-            GL.End();
-        }
-        else
-        {
-            // Last resort fallback: use GUI.Label for text
-            // This only works inside OnGUI and doesn't support our styling, but at least shows text
-            var guiStyle = new GUIStyle(GUI.skin.label);
-            guiStyle.fontSize = (int)fontSize;
-            guiStyle.normal.textColor = textColor.ToUnityColor() * new Color(1, 1, 1, cmd.Opacity);
-            guiStyle.alignment = cmd.TextAlign switch
-            {
-                Style.TextAlign.Center => TextAnchor.MiddleCenter,
-                Style.TextAlign.Right => TextAnchor.MiddleRight,
-                _ => TextAnchor.MiddleLeft,
-            };
-            guiStyle.wordWrap = true;
-            guiStyle.clipping = TextClipping.Clip;
-
-            GUI.Label(
-                new UnityEngine.Rect(cmd.Rect.X, cmd.Rect.Y, cmd.Rect.Width, cmd.Rect.Height),
-                cmd.Text,
-                guiStyle
-            );
-        }
+        // Re-push GL matrix for subsequent draw commands
+        GL.PushMatrix();
+        GL.LoadPixelMatrix(0, Screen.width, Screen.height, 0);
     }
 
     /// <summary>
