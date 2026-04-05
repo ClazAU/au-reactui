@@ -16,6 +16,9 @@ public static class InputSystem
     static float _dragOffsetX, _dragOffsetY;
     static Action<float>? _dragSetX, _dragSetY;
 
+    // Slider drag state
+    static Core.UINode? _slidingNode;
+
     // Registered draggable panels: componentId → callbacks
     static readonly System.Collections.Generic.Dictionary<int, DragTarget> _dragTargets = new();
 
@@ -58,34 +61,53 @@ public static class InputSystem
         Plugin.ReactUIPlugin.Logger.LogInfo($"[ReactUI] StartDrag pos=({currentX},{currentY}) mouse=({mx},{my}) offset=({_dragOffsetX},{_dragOffsetY})");
     }
 
-    public static void ProcessInput(Core.UINode? root)
+    /// <summary>
+    /// Process input across all roots. Hit tests all roots and picks the topmost hit,
+    /// so only one root receives input per frame (no cross-tree interference).
+    /// </summary>
+    public static void ProcessInputAll(System.Collections.Generic.List<Core.UINode> roots)
     {
-        if (root == null) return;
-
         var mousePos = UnityEngine.Input.mousePosition;
-        // Unity mouse Y is bottom-up, convert to top-down
         float mx = mousePos.x;
         float my = UnityEngine.Screen.height - mousePos.y;
 
+        // Find the topmost hit across all roots (last root = highest z-order)
+        Core.UINode? hit = null;
+        for (int i = roots.Count - 1; i >= 0; i--)
+        {
+            hit = HitTesting.HitTest(roots[i], mx, my);
+            if (hit != null) break;
+        }
+
+        ProcessInputWithHit(hit, mx, my);
+    }
+
+    public static void ProcessInput(Core.UINode? root)
+    {
+        if (root == null) return;
+        var mousePos = UnityEngine.Input.mousePosition;
+        float mx = mousePos.x;
+        float my = UnityEngine.Screen.height - mousePos.y;
         var hit = HitTesting.HitTest(root, mx, my);
+        ProcessInputWithHit(hit, mx, my);
+    }
 
-        // Log hit testing periodically for diagnostics
-        if (UnityEngine.Input.GetMouseButtonDown(0))
-            Plugin.ReactUIPlugin.Logger.LogInfo($"[ReactUI] HitTest at ({mx},{my}) = {(hit != null ? hit.Type + " rect=" + hit.ScreenRect : "null")}");
-
-
-        // Handle hover transitions
+    private static void ProcessInputWithHit(Core.UINode? hit, float mx, float my)
+    {
+        // Handle hover transitions — set IsHovered on hit node AND all ancestors
         if (hit != _hoveredNode)
         {
             if (_hoveredNode != null)
             {
-                _hoveredNode.IsHovered = false;
+                var n = _hoveredNode;
+                while (n != null) { n.IsHovered = false; n = n.Parent; }
                 FireEvent(_hoveredNode, "onMouseLeave");
             }
             _hoveredNode = hit;
             if (_hoveredNode != null)
             {
-                _hoveredNode.IsHovered = true;
+                var n = _hoveredNode;
+                while (n != null) { n.IsHovered = true; n = n.Parent; }
                 FireEvent(_hoveredNode, "onMouseEnter");
             }
         }
@@ -99,33 +121,33 @@ public static class InputSystem
                 hit.IsActive = true;
                 FireEvent(hit, "onMouseDown");
 
-                // Check if we should start dragging: walk up from hit to find a registered draggable.
-                // Skip if the hit node has an onClick handler (button/interactive element).
-                if (!_isDragging)
+                // Priority: slider > button/onClick > panel drag
+                var sliderNode = FindAncestorOfType(hit, "slider");
+                if (sliderNode != null)
                 {
-                    bool hasClickHandler = HasEventHandler(hit, "onClick");
-                    if (!hasClickHandler)
+                    _slidingNode = sliderNode;
+                    UpdateSliderValue(sliderNode, mx);
+                }
+                else if (!HasEventHandler(hit, "onClick") && !_isDragging)
+                {
+                    // Nothing interactive consumed the click — try panel drag as fallback
+                    var ancestor = hit;
+                    while (ancestor != null)
                     {
-                        var ancestor = hit;
-                        while (ancestor != null)
+                        if (ancestor.Type == "__component" && _dragTargets.TryGetValue(ancestor.ComponentId, out var target))
                         {
-                            if (ancestor.Type == "__component" && _dragTargets.TryGetValue(ancestor.ComponentId, out var target))
-                            {
-                                float curX = target.GetX();
-                                float curY = target.GetY();
-                                _dragOffsetX = mx - curX;
-                                _dragOffsetY = my - curY;
-                                _dragSetX = target.SetX;
-                                _dragSetY = target.SetY;
-                                _isDragging = true;
-                                break;
-                            }
-                            ancestor = ancestor.Parent;
+                            _dragOffsetX = mx - target.GetX();
+                            _dragOffsetY = my - target.GetY();
+                            _dragSetX = target.SetX;
+                            _dragSetY = target.SetY;
+                            _isDragging = true;
+                            break;
                         }
+                        ancestor = ancestor.Parent;
                     }
                 }
             }
-            // Focus management
+
             FocusManager.SetFocus(hit);
         }
 
@@ -136,22 +158,27 @@ public static class InputSystem
             {
                 _activeNode.IsActive = false;
                 FireEvent(_activeNode, "onMouseUp");
-                if (_activeNode == hit && !_isDragging)
+                if (_activeNode == hit && !_isDragging && _slidingNode == null)
                     FireEvent(_activeNode, "onClick");
                 _activeNode = null;
             }
             _isDragging = false;
             _dragSetX = null;
             _dragSetY = null;
+            _slidingNode = null;
         }
 
-        // Drag tracking — runs every frame while dragging
+        // Drag tracking
         if (_isDragging && _dragSetX != null && _dragSetY != null)
         {
-            float newX = mx - _dragOffsetX;
-            float newY = my - _dragOffsetY;
-            _dragSetX(newX);
-            _dragSetY(newY);
+            _dragSetX(mx - _dragOffsetX);
+            _dragSetY(my - _dragOffsetY);
+        }
+
+        // Slider drag tracking
+        if (_slidingNode != null && UnityEngine.Input.GetMouseButton(0))
+        {
+            UpdateSliderValue(_slidingNode, mx);
         }
 
         // Scroll
@@ -162,22 +189,56 @@ public static class InputSystem
             if (scrollable != null)
             {
                 scrollable.ScrollOffsetY -= scroll * 40f;
-                // Clamp scroll offset to non-negative (the renderer will handle max clamp
-                // based on content height minus viewport height)
                 if (scrollable.ScrollOffsetY < 0)
                     scrollable.ScrollOffsetY = 0;
                 FireEvent(scrollable, "onScroll");
             }
         }
 
-        // Keyboard input to focused element
         if (FocusManager.Focused != null)
-        {
             ProcessKeyboard(FocusManager.Focused);
-        }
 
-        // Cursor
         CursorManager.Update(_hoveredNode);
+    }
+
+    static Core.UINode? FindAncestorOfType(Core.UINode node, string type)
+    {
+        var current = node;
+        while (current != null)
+        {
+            if (current.Type == type) return current;
+            current = current.Parent;
+        }
+        return null;
+    }
+
+    static void UpdateSliderValue(Core.UINode slider, float mouseX)
+    {
+        var vnode = slider.LastVNode;
+        if (vnode == null) return;
+
+        float min = 0, max = 1;
+        if (vnode.Props.TryGetValue("min", out var mnObj) && mnObj is float mnf) min = mnf;
+        if (vnode.Props.TryGetValue("max", out var mxObj) && mxObj is float mxf) max = mxf;
+
+        var rect = slider.ScreenRect;
+        float padL = slider.ComputedStyle?.Padding?.Left ?? 0;
+        float padR = slider.ComputedStyle?.Padding?.Right ?? 0;
+        float trackX = rect.X + padL;
+        float trackW = rect.Width - padL - padR;
+
+        float pct = trackW > 0 ? (mouseX - trackX) / trackW : 0;
+        pct = System.Math.Max(0, System.Math.Min(1, pct));
+        float newVal = min + pct * (max - min);
+
+        // Round to 1 decimal
+        newVal = (float)System.Math.Round(newVal, 1);
+
+        if (vnode.Props.TryGetValue("onChange", out var handler) && handler is System.Action<float> onChange)
+        {
+            try { onChange(newVal); }
+            catch (System.Exception) { }
+        }
     }
 
     static bool HasEventHandler(Core.UINode node, string eventName)

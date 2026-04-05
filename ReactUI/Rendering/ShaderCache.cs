@@ -18,16 +18,23 @@ public static class ShaderCache
     // Fallback shader/material for when SDF shaders are unavailable
     private static Material? _fallbackMaterial;
 
+    private static AssetBundle? _bundle;
+
     public static void Initialize()
     {
         if (_initialized) return;
         _initialized = true;
 
-        // Try to create shaders from ShaderLab source (works in editor; builds need AssetBundle)
+        // Try loading shaders from AssetBundle first (works in IL2CPP builds)
+        TryLoadAssetBundle();
+
+        // Fallback: try Shader.Find / runtime compilation
         TryCreateShader("ReactUI/SDFRect", SdfRectShaderSource.Source);
         TryCreateShader("ReactUI/SDFText", SdfTextShaderSource.Source);
         TryCreateShader("ReactUI/Image", ImageShaderSource.Source);
         TryCreateShader("ReactUI/KawaseBlur", KawaseBlurShaderSource.Source);
+
+        Plugin.ReactUIPlugin.Logger.LogInfo($"[ReactUI] ShaderCache: SDFRect={HasShader("ReactUI/SDFRect")}, SDFText={HasShader("ReactUI/SDFText")}, Image={HasShader("ReactUI/Image")}, Blur={HasShader("ReactUI/KawaseBlur")}");
 
         // Build fallback material using a guaranteed built-in shader
         var fallbackShader = Shader.Find("Hidden/Internal-Colored");
@@ -35,11 +42,54 @@ public static class ShaderCache
         {
             _fallbackMaterial = new Material(fallbackShader);
             _fallbackMaterial.hideFlags = HideFlags.HideAndDontSave;
-            // Enable alpha blending
             _fallbackMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
             _fallbackMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
             _fallbackMaterial.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
             _fallbackMaterial.SetInt("_ZWrite", 0);
+        }
+    }
+
+    private static void TryLoadAssetBundle()
+    {
+        // Look for reactui.assets next to the plugin DLL
+        var pluginDir = System.IO.Path.GetDirectoryName(
+            System.Reflection.Assembly.GetExecutingAssembly().Location);
+        if (pluginDir == null) return;
+
+        var bundlePath = System.IO.Path.Combine(pluginDir, "reactui.assets");
+        if (!System.IO.File.Exists(bundlePath))
+        {
+            Plugin.ReactUIPlugin.Logger.LogInfo($"[ReactUI] No AssetBundle at {bundlePath}");
+            return;
+        }
+
+        try
+        {
+            _bundle = AssetBundle.LoadFromFile(bundlePath);
+            if (_bundle == null)
+            {
+                Plugin.ReactUIPlugin.Logger.LogWarning("[ReactUI] AssetBundle.LoadFromFile returned null");
+                return;
+            }
+
+            // Load all shaders from the bundle (non-generic for IL2CPP compatibility)
+            var allAssets = _bundle.LoadAllAssets(Il2CppInterop.Runtime.Il2CppType.Of<Shader>());
+            foreach (var asset in allAssets)
+            {
+                var shader = asset.TryCast<Shader>();
+                if (shader != null && !string.IsNullOrEmpty(shader.name))
+                {
+                    _shaders[shader.name] = shader;
+                    var mat = new Material(shader);
+                    mat.hideFlags = HideFlags.HideAndDontSave;
+                    _materials[shader.name] = mat;
+                    Plugin.ReactUIPlugin.Logger.LogInfo($"[ReactUI] Loaded shader from bundle: {shader.name}");
+                }
+            }
+        }
+        catch (System.Exception ex)
+        {
+            Plugin.ReactUIPlugin.Logger.LogError($"[ReactUI] AssetBundle load failed: {ex}");
         }
     }
 

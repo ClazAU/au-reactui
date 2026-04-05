@@ -55,14 +55,26 @@ public class RenderPipeline
     {
         _commands.Clear();
         _clipStack = new ClipStack();
-        TraverseTree(root, 0);
+        TraverseTree(root, 0, 0, 0);
         _commands.Sort((a, b) => a.ZOrder.CompareTo(b.ZOrder));
     }
 
-    private void TraverseTree(Core.UINode node, int depth)
+    private void TraverseTree(Core.UINode node, int depth, float scrollOffsetX, float scrollOffsetY)
     {
+        // Resolve style with pseudo-state overlays (hover, active, focus)
         var style = node.ComputedStyle;
-        var rect = node.ScreenRect;
+        if (node.IsHovered && style.Hover != null)
+            style = style.Merge(style.Hover);
+        if (node.IsActive && style.Active != null)
+            style = style.Merge(style.Active);
+        if (node.IsFocused && style.Focus != null)
+            style = style.Merge(style.Focus);
+        // Apply accumulated scroll offset to get the rendered position
+        var rect = new Core.Rect(
+            node.ScreenRect.X - scrollOffsetX,
+            node.ScreenRect.Y - scrollOffsetY,
+            node.ScreenRect.Width,
+            node.ScreenRect.Height);
 
         // Skip zero-size nodes
         if (rect.Width <= 0 || rect.Height <= 0)
@@ -126,24 +138,11 @@ public class RenderPipeline
 
         if (hasBackground || hasGradient || hasBorder || hasShadow || hasRadius)
         {
-            // For shadows, expand the rect to accommodate blur + spread + offset
-            var cmdRect = rect;
-            if (hasShadow)
-            {
-                var s = style.BoxShadow!.Value;
-                float expand = s.Blur + s.Spread;
-                cmdRect = new Core.Rect(
-                    rect.X + s.OffsetX - expand,
-                    rect.Y + s.OffsetY - expand,
-                    rect.Width + expand * 2,
-                    rect.Height + expand * 2
-                );
-            }
-
+            // Pass the element rect — DrawSdfRect/DrawFallbackRect handle shadow expansion
             _commands.Add(new DrawCommand
             {
                 Type = DrawType.SdfRect,
-                Rect = hasShadow ? cmdRect : rect,
+                Rect = rect,
                 ClipRect = clipRect,
                 ZOrder = zOrder,
                 BackgroundColor = style.Background ?? Style.UIColor.Transparent,
@@ -162,6 +161,8 @@ public class RenderPipeline
         // Text content
         if (node.Type == "text" && !string.IsNullOrEmpty(node.LastVNode?.TextContent))
         {
+            // Inherit text properties from parent if not set on text node
+            var parentStyle = node.Parent?.ComputedStyle;
             _commands.Add(new DrawCommand
             {
                 Type = DrawType.Text,
@@ -169,11 +170,136 @@ public class RenderPipeline
                 ClipRect = clipRect,
                 ZOrder = zOrder + 1, // text renders above background
                 Text = node.LastVNode.TextContent,
-                TextColor = style.Color ?? Style.UIColor.White,
-                FontSize = style.FontSize ?? 14f,
-                FontWeight = style.FontWeight ?? 400,
-                TextAlign = style.TextAlign ?? Style.TextAlign.Left,
+                TextColor = style.Color ?? parentStyle?.Color ?? Style.UIColor.White,
+                FontSize = style.FontSize ?? parentStyle?.FontSize ?? 14f,
+                FontWeight = style.FontWeight ?? parentStyle?.FontWeight ?? 400,
+                TextAlign = style.TextAlign ?? parentStyle?.TextAlign ?? Style.TextAlign.Left,
                 LineHeight = style.LineHeight ?? 0,
+                Opacity = opacity,
+            });
+        }
+
+        // Input text content — render value or placeholder
+        if (node.Type == "input" && node.LastVNode?.Props != null)
+        {
+            string inputText = "";
+            var textColor = style.Color ?? Style.UIColor.White;
+
+            if (node.LastVNode.Props.TryGetValue("value", out var valObj) && valObj is string val && val.Length > 0)
+            {
+                inputText = val;
+            }
+            else if (node.LastVNode.Props.TryGetValue("placeholder", out var phObj) && phObj is string ph)
+            {
+                inputText = ph;
+                textColor = new Style.UIColor(textColor.R, textColor.G, textColor.B, textColor.A * 0.4f);
+            }
+
+            if (!string.IsNullOrEmpty(inputText))
+            {
+                // Inset text by padding
+                float padL = style.Padding?.Left ?? 0;
+                float padT = style.Padding?.Top ?? 0;
+                float padR = style.Padding?.Right ?? 0;
+                float padB = style.Padding?.Bottom ?? 0;
+                var textRect = new Core.Rect(rect.X + padL, rect.Y + padT,
+                    rect.Width - padL - padR, rect.Height - padT - padB);
+
+                _commands.Add(new DrawCommand
+                {
+                    Type = DrawType.Text,
+                    Rect = textRect,
+                    ClipRect = clipRect,
+                    ZOrder = zOrder + 1,
+                    Text = inputText,
+                    TextColor = textColor,
+                    FontSize = style.FontSize ?? 14f,
+                    FontWeight = style.FontWeight ?? 400,
+                    TextAlign = style.TextAlign ?? Style.TextAlign.Left,
+                    LineHeight = style.LineHeight ?? 0,
+                    Opacity = opacity,
+                });
+            }
+
+            // Draw cursor when focused
+            if (node.IsFocused)
+            {
+                string cursorText = "";
+                if (node.LastVNode.Props.TryGetValue("value", out var v2) && v2 is string s2)
+                    cursorText = s2;
+
+                var cursorStyle = new UnityEngine.GUIStyle();
+                cursorStyle.fontSize = (int)(style.FontSize ?? 14f);
+                cursorStyle.fontStyle = (style.FontWeight ?? 400) >= 700 ? UnityEngine.FontStyle.Bold : UnityEngine.FontStyle.Normal;
+                float cursorX = rect.X + (style.Padding?.Left ?? 0);
+                if (cursorText.Length > 0)
+                    cursorX += cursorStyle.CalcSize(new UnityEngine.GUIContent(cursorText)).x;
+
+                float cursorY = rect.Y + (style.Padding?.Top ?? 0) + 2;
+                float cursorH = (style.FontSize ?? 14f);
+
+                _commands.Add(new DrawCommand
+                {
+                    Type = DrawType.SdfRect,
+                    Rect = new Core.Rect(cursorX, cursorY, 1.5f, cursorH),
+                    ClipRect = clipRect,
+                    ZOrder = zOrder + 2,
+                    BackgroundColor = style.Color ?? Style.UIColor.White,
+                    Opacity = opacity * ((UnityEngine.Mathf.Sin(UnityEngine.Time.time * 6f) + 1f) * 0.5f), // blink
+                });
+            }
+        }
+
+        // Slider rendering
+        if (node.Type == "slider" && node.LastVNode?.Props != null)
+        {
+            float val = 0, min = 0, max = 1;
+            if (node.LastVNode.Props.TryGetValue("value", out var vObj) && vObj is float vf) val = vf;
+            if (node.LastVNode.Props.TryGetValue("min", out var mnObj) && mnObj is float mnf) min = mnf;
+            if (node.LastVNode.Props.TryGetValue("max", out var mxObj) && mxObj is float mxf) max = mxf;
+
+            float padL = style.Padding?.Left ?? 0;
+            float padR = style.Padding?.Right ?? 0;
+            float padT = style.Padding?.Top ?? 0;
+            float trackW = rect.Width - padL - padR;
+            float trackH = 4;
+            float trackX = rect.X + padL;
+            float trackY = rect.Y + padT + (rect.Height - padT - (style.Padding?.Bottom ?? 0) - trackH) / 2f;
+            float pct = max > min ? (val - min) / (max - min) : 0;
+
+            // Track background
+            _commands.Add(new DrawCommand
+            {
+                Type = DrawType.SdfRect, Rect = new Core.Rect(trackX, trackY, trackW, trackH),
+                ClipRect = clipRect, ZOrder = zOrder + 1,
+                BackgroundColor = new Style.UIColor(1, 1, 1, 0.15f),
+                BorderRadiusTL = 2, BorderRadiusTR = 2, BorderRadiusBR = 2, BorderRadiusBL = 2,
+                Opacity = opacity,
+            });
+            // Filled portion
+            if (pct > 0)
+            {
+                var accentColor = style.Color ?? new Style.UIColor(0.61f, 0.32f, 0.67f, 1f);
+                _commands.Add(new DrawCommand
+                {
+                    Type = DrawType.SdfRect, Rect = new Core.Rect(trackX, trackY, trackW * pct, trackH),
+                    ClipRect = clipRect, ZOrder = zOrder + 2,
+                    BackgroundColor = accentColor,
+                    BorderRadiusTL = 2, BorderRadiusTR = 2, BorderRadiusBR = 2, BorderRadiusBL = 2,
+                    Opacity = opacity,
+                });
+            }
+            // Thumb
+            float thumbR = 7;
+            float thumbX = trackX + trackW * pct - thumbR;
+            float thumbY = trackY + trackH / 2f - thumbR;
+            var thumbColor = style.Color ?? new Style.UIColor(0.61f, 0.32f, 0.67f, 1f);
+            _commands.Add(new DrawCommand
+            {
+                Type = DrawType.SdfRect, Rect = new Core.Rect(thumbX, thumbY, thumbR * 2, thumbR * 2),
+                ClipRect = clipRect, ZOrder = zOrder + 3,
+                BackgroundColor = thumbColor,
+                BorderRadiusTL = thumbR, BorderRadiusTR = thumbR, BorderRadiusBR = thumbR, BorderRadiusBL = thumbR,
                 Opacity = opacity,
             });
         }
@@ -204,10 +330,72 @@ public class RenderPipeline
             }
         }
 
-        // Recurse children
+        // Scroll: compute content height and clamp scroll position
+        bool isScroll = style.Overflow == Style.Overflow.Scroll;
+        float childScrollX = scrollOffsetX;
+        float childScrollY = scrollOffsetY;
+        float contentHeight = 0;
+        if (isScroll)
+        {
+            // Compute content height from children's layout rects (not scroll-adjusted)
+            for (int i = 0; i < node.Children.Count; i++)
+            {
+                var childRect = node.Children[i].ScreenRect;
+                float childBottom = childRect.Y + childRect.Height - node.ScreenRect.Y;
+                if (childBottom > contentHeight) contentHeight = childBottom;
+            }
+
+            // Clamp scroll offset
+            float maxScroll = System.Math.Max(0, contentHeight - rect.Height);
+            if (node.ScrollOffsetY > maxScroll) node.ScrollOffsetY = maxScroll;
+            if (node.ScrollOffsetY < 0) node.ScrollOffsetY = 0;
+
+            // Add this container's scroll to the accumulated offset
+            childScrollY += node.ScrollOffsetY;
+        }
+
+        // Recurse children with accumulated scroll offset (no UINode mutation)
         for (int i = 0; i < node.Children.Count; i++)
         {
-            TraverseTree(node.Children[i], depth + i + 1);
+            TraverseTree(node.Children[i], depth + i + 1, childScrollX, childScrollY);
+        }
+
+        // Draw scrollbar if content overflows
+        if (isScroll && contentHeight > rect.Height)
+        {
+            float scrollY = node.ScrollOffsetY;
+            float trackW = 6;
+            float trackX = rect.Right - trackW - 2;
+            float trackY = rect.Y + 2;
+            float trackH = rect.Height - 4;
+
+            float visibleRatio = rect.Height / contentHeight;
+            float thumbH = System.Math.Max(trackH * visibleRatio, 20);
+            float thumbY = trackY + (trackH - thumbH) * (scrollY / System.Math.Max(1, contentHeight - rect.Height));
+
+            // Track
+            _commands.Add(new DrawCommand
+            {
+                Type = DrawType.SdfRect,
+                Rect = new Core.Rect(trackX, trackY, trackW, trackH),
+                ClipRect = rect,
+                ZOrder = zOrder + 100,
+                BackgroundColor = new Style.UIColor(1, 1, 1, 0.1f),
+                BorderRadiusTL = 3, BorderRadiusTR = 3, BorderRadiusBR = 3, BorderRadiusBL = 3,
+                Opacity = opacity,
+            });
+
+            // Thumb
+            _commands.Add(new DrawCommand
+            {
+                Type = DrawType.SdfRect,
+                Rect = new Core.Rect(trackX, thumbY, trackW, thumbH),
+                ClipRect = rect,
+                ZOrder = zOrder + 101,
+                BackgroundColor = new Style.UIColor(1, 1, 1, 0.4f),
+                BorderRadiusTL = 3, BorderRadiusTR = 3, BorderRadiusBR = 3, BorderRadiusBL = 3,
+                Opacity = opacity,
+            });
         }
 
         if (pushClip)
@@ -232,6 +420,15 @@ public class RenderPipeline
             if (cmd.ClipRect.Width <= 0 || cmd.ClipRect.Height <= 0)
                 continue;
 
+            // Skip commands entirely outside clip rect
+            bool hasClip = cmd.ClipRect.Width < float.MaxValue;
+            if (hasClip)
+            {
+                if (cmd.Rect.X >= cmd.ClipRect.Right || cmd.Rect.Right <= cmd.ClipRect.X ||
+                    cmd.Rect.Y >= cmd.ClipRect.Bottom || cmd.Rect.Bottom <= cmd.ClipRect.Y)
+                    continue;
+            }
+
             switch (cmd.Type)
             {
                 case DrawType.SdfRect:
@@ -246,7 +443,7 @@ public class RenderPipeline
                     break;
 
                 case DrawType.Text:
-                    DrawText(cmd);
+                    DrawText(cmd, hasClip ? cmd.ClipRect : (Core.Rect?)null);
                     break;
 
                 case DrawType.Image:
@@ -265,16 +462,18 @@ public class RenderPipeline
     {
         if (_sdfRectMaterial == null) return;
 
-        _sdfRectMaterial.SetPass(0);
-
-        // Set shader uniforms
+        // Set all uniforms BEFORE SetPass — SetPass activates the shader with current values
         var rect = cmd.Rect;
-        _sdfRectMaterial.SetVector("_RectSize", new Vector4(rect.Width, rect.Height, 0, 0));
-        _sdfRectMaterial.SetVector("_RectPos", new Vector4(rect.X, rect.Y, 0, 0));
+        // _RectSize and _RectPos are set below after computing shadow padding
         _sdfRectMaterial.SetVector("_Radii", new Vector4(
             cmd.BorderRadiusTL, cmd.BorderRadiusTR, cmd.BorderRadiusBR, cmd.BorderRadiusBL));
-        _sdfRectMaterial.SetColor("_BgColor", cmd.BackgroundColor.ToUnityColor() * new Color(1, 1, 1, cmd.Opacity));
-        _sdfRectMaterial.SetColor("_BorderColor", cmd.BorderColor.ToUnityColor() * new Color(1, 1, 1, cmd.Opacity));
+        // Pass raw colors — shader handles opacity via alpha compositing (matches CPU path)
+        var bgColor = cmd.BackgroundColor.ToUnityColor();
+        bgColor.a *= cmd.Opacity;
+        _sdfRectMaterial.SetColor("_BgColor", bgColor);
+        var borderColor = cmd.BorderColor.ToUnityColor();
+        borderColor.a *= cmd.Opacity;
+        _sdfRectMaterial.SetColor("_BorderColor", borderColor);
         _sdfRectMaterial.SetFloat("_BorderWidth", cmd.BorderWidth);
 
         // Gradient
@@ -300,7 +499,9 @@ public class RenderPipeline
             _sdfRectMaterial.SetVector("_ShadowOffset", new Vector4(s.OffsetX, s.OffsetY, 0, 0));
             _sdfRectMaterial.SetFloat("_ShadowBlur", s.Blur);
             _sdfRectMaterial.SetFloat("_ShadowSpread", s.Spread);
-            _sdfRectMaterial.SetColor("_ShadowColor", s.Color.ToUnityColor() * new Color(1, 1, 1, cmd.Opacity));
+            var shadowColor = s.Color.ToUnityColor();
+            shadowColor.a *= cmd.Opacity;
+            _sdfRectMaterial.SetColor("_ShadowColor", shadowColor);
             _sdfRectMaterial.SetFloat("_ShadowInset", s.Inset ? 1 : 0);
         }
         else
@@ -308,8 +509,38 @@ public class RenderPipeline
             _sdfRectMaterial.SetFloat("_ShadowEnabled", 0);
         }
 
-        // Draw quad
-        DrawGLQuad(cmd.Rect);
+        // Expand quad for shadow — shader SDF is computed from _RectSize and localPos
+        // The element rect maps to UV 0-1, but the shadow extends beyond
+        float padL = 0, padT = 0, padR = 0, padB = 0;
+        if (cmd.Shadow.HasValue)
+        {
+            var s = cmd.Shadow.Value;
+            // sigma = blur * 0.5, extend to ~3.5σ so gaussian fades to <0.2%
+            float extent = s.Blur * 1.75f + s.Spread;
+            padL = Mathf.Max(0, extent - s.OffsetX);
+            padR = Mathf.Max(0, extent + s.OffsetX);
+            padT = Mathf.Max(0, extent - s.OffsetY);
+            padB = Mathf.Max(0, extent + s.OffsetY);
+        }
+
+        // Tell the shader the full quad size, element offset, and element size
+        float totalW = rect.Width + padL + padR;
+        float totalH = rect.Height + padT + padB;
+        _sdfRectMaterial.SetVector("_RectSize", new Vector4(totalW, totalH, 0, 0));
+        _sdfRectMaterial.SetVector("_RectPos", new Vector4(padL, padT, 0, 0));
+        _sdfRectMaterial.SetVector("_ElemSize", new Vector4(rect.Width, rect.Height, 0, 0));
+
+        // Clip rect (screen-space: x, y, right, bottom)
+        var clip = cmd.ClipRect;
+        _sdfRectMaterial.SetVector("_ClipRect", new Vector4(clip.X, clip.Y, clip.Right, clip.Bottom));
+
+        // Quad origin in screen space (for screen-space clip test in shader)
+        var expandedRect = new Core.Rect(rect.X - padL, rect.Y - padT, totalW, totalH);
+        _sdfRectMaterial.SetVector("_QuadOrigin", new Vector4(expandedRect.X, expandedRect.Y, 0, 0));
+
+        // Activate shader with all uniforms set, then draw
+        _sdfRectMaterial.SetPass(0);
+        DrawGLQuad(expandedRect);
     }
 
     /// <summary>
@@ -377,12 +608,18 @@ public class RenderPipeline
     /// <summary>
     /// Draw text using glyph quads from the font atlas.
     /// </summary>
-    private void DrawText(DrawCommand cmd)
+    private void DrawText(DrawCommand cmd, Core.Rect? clipRect = null)
     {
         if (string.IsNullOrEmpty(cmd.Text)) return;
 
-        // Must pop GL matrix before using GUI.Label, then push again after
         GL.PopMatrix();
+
+        bool clipping = clipRect.HasValue && clipRect.Value.Width < float.MaxValue;
+        if (clipping)
+        {
+            var cr = clipRect!.Value;
+            GUI.BeginClip(new UnityEngine.Rect(cr.X, cr.Y, cr.Width, cr.Height));
+        }
 
         var guiStyle = new GUIStyle(GUI.skin.label);
         guiStyle.fontSize = (int)cmd.FontSize;
@@ -391,25 +628,30 @@ public class RenderPipeline
         {
             Style.TextAlign.Center => TextAnchor.MiddleCenter,
             Style.TextAlign.Right => TextAnchor.MiddleRight,
-            _ => TextAnchor.UpperLeft,
+            _ => TextAnchor.MiddleLeft,
         };
         guiStyle.fontStyle = cmd.FontWeight >= 700 ? FontStyle.Bold : FontStyle.Normal;
-        guiStyle.wordWrap = true;
-        guiStyle.clipping = TextClipping.Clip;
+        guiStyle.wordWrap = false;
+        guiStyle.clipping = TextClipping.Overflow;
 
-        // Use actual measured size so text never clips due to layout width estimates
         var content = new GUIContent(cmd.Text);
         var measured = guiStyle.CalcSize(content);
         float w = System.Math.Max(cmd.Rect.Width, measured.x);
         float h = cmd.Rect.Height > 0 ? cmd.Rect.Height : measured.y;
 
+        // If clipping, offset position relative to clip rect origin
+        float drawX = clipping ? cmd.Rect.X - clipRect!.Value.X : cmd.Rect.X;
+        float drawY = clipping ? cmd.Rect.Y - clipRect!.Value.Y : cmd.Rect.Y;
+
         GUI.Label(
-            new UnityEngine.Rect(cmd.Rect.X, cmd.Rect.Y, w, h),
+            new UnityEngine.Rect(drawX, drawY, w, h),
             cmd.Text,
             guiStyle
         );
 
-        // Re-push GL matrix for subsequent draw commands
+        if (clipping)
+            GUI.EndClip();
+
         GL.PushMatrix();
         GL.LoadPixelMatrix(0, Screen.width, Screen.height, 0);
     }
@@ -464,11 +706,12 @@ public class RenderPipeline
 
     private void DrawGLQuad(Core.Rect rect)
     {
+        // UV Y matches screen Y: (0,0) at top-left, (1,1) at bottom-right
         GL.Begin(7 /* GL.QUADS */);
-        GL.TexCoord2(0, 1); GL.Vertex3(rect.X, rect.Y, 0);
-        GL.TexCoord2(1, 1); GL.Vertex3(rect.Right, rect.Y, 0);
-        GL.TexCoord2(1, 0); GL.Vertex3(rect.Right, rect.Bottom, 0);
-        GL.TexCoord2(0, 0); GL.Vertex3(rect.X, rect.Bottom, 0);
+        GL.TexCoord2(0, 0); GL.Vertex3(rect.X, rect.Y, 0);
+        GL.TexCoord2(1, 0); GL.Vertex3(rect.Right, rect.Y, 0);
+        GL.TexCoord2(1, 1); GL.Vertex3(rect.Right, rect.Bottom, 0);
+        GL.TexCoord2(0, 1); GL.Vertex3(rect.X, rect.Bottom, 0);
         GL.End();
     }
 

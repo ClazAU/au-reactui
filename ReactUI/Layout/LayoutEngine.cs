@@ -52,21 +52,66 @@ public static class LayoutEngine
         {
             var text = uiNode.LastVNode.TextContent;
             var fontSize = uiNode.ComputedStyle?.FontSize ?? 14f;
+            var fontWeight = uiNode.ComputedStyle?.FontWeight ?? 400;
             var lineHeight = uiNode.ComputedStyle?.LineHeight ?? 1.4f;
+
+            // Inherit text styles from parent if not set
+            if (!uiNode.ComputedStyle?.FontSize.HasValue ?? true)
+                fontSize = uiNode.Parent?.ComputedStyle?.FontSize ?? fontSize;
+            if (!uiNode.ComputedStyle?.FontWeight.HasValue ?? true)
+                fontWeight = uiNode.Parent?.ComputedStyle?.FontWeight ?? fontWeight;
+
+            // Cache the GUIStyle measurement for accurate sizing
+            var guiStyle = new UnityEngine.GUIStyle();
+            guiStyle.fontSize = (int)fontSize;
+            guiStyle.fontStyle = fontWeight >= 700 ? UnityEngine.FontStyle.Bold : UnityEngine.FontStyle.Normal;
+            guiStyle.wordWrap = false;
+
+            var measured = guiStyle.CalcSize(new UnityEngine.GUIContent(text));
+            float measuredW = measured.x;
+            float measuredH = measured.y;
 
             ln.MeasureFunc = (maxWidth, widthMode, maxHeight, heightMode) =>
             {
-                float charWidth = fontSize * 0.62f;
-                float textWidth = text.Length * charWidth;
-
                 float availWidth = widthMode == MeasureMode.Undefined ? float.MaxValue : maxWidth;
-                float fitWidth = System.Math.Min(textWidth, availWidth);
+                float fitWidth = System.Math.Min(measuredW, availWidth);
 
-                int lines = fitWidth > 0 ? (int)System.Math.Ceiling(textWidth / fitWidth) : 1;
+                // Estimate line wrapping if constrained
+                int lines = fitWidth > 0 && measuredW > fitWidth
+                    ? (int)System.Math.Ceiling(measuredW / fitWidth)
+                    : 1;
                 if (lines < 1) lines = 1;
-                float fitHeight = lines * fontSize * lineHeight;
+                float fitHeight = lines * measuredH;
 
                 return (fitWidth, fitHeight);
+            };
+        }
+
+        // Slider elements need a measure function for track height
+        if (uiNode.Type == "slider")
+        {
+            ln.MeasureFunc = (maxWidth, widthMode, maxHeight, heightMode) =>
+            {
+                float w = widthMode == MeasureMode.Exactly ? maxWidth : 120;
+                return (w, 20); // 20px height for track + thumb
+            };
+        }
+
+        // Input elements need a measure function for minimum text height
+        if (uiNode.Type == "input")
+        {
+            var fontSize = uiNode.ComputedStyle?.FontSize ?? 14f;
+            var fontWeight = uiNode.ComputedStyle?.FontWeight ?? 400;
+
+            var guiStyle = new UnityEngine.GUIStyle();
+            guiStyle.fontSize = (int)fontSize;
+            guiStyle.fontStyle = fontWeight >= 700 ? UnityEngine.FontStyle.Bold : UnityEngine.FontStyle.Normal;
+            float lineH = guiStyle.CalcSize(new UnityEngine.GUIContent("Ag")).y;
+
+            ln.MeasureFunc = (maxWidth, widthMode, maxHeight, heightMode) =>
+            {
+                float w = widthMode == MeasureMode.Exactly ? maxWidth : 100;
+                return (w, lineH);
             };
         }
 

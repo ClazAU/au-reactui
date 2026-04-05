@@ -18,19 +18,11 @@ public static class DemoPanel
 
     private static VNode RenderRoot()
     {
-        var (visible, setVisible) = UseState(true);
         var (tab, setTab) = UseState(0);
-        var (posX, setPosX) = UseState(40f);
-        var (posY, setPosY) = UseState(40f);
+        var (posX, setPosX) = UseState(0f);
+        var (posY, setPosY) = UseState(0f);
 
-        // F9 toggle — check each frame via UseEffect with null deps
-        UseEffect(() =>
-        {
-            if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F9))
-                setVisible(!visible);
-        }, null);
-
-        if (!visible) return Div(); // empty — hidden
+        if (!ReactUI.Input.KeyToggle.Get(UnityEngine.KeyCode.F9)) return Div();
 
         // Register this component as draggable — InputSystem tracks drag every frame
         var capturedPosX = posX; var capturedPosY = posY;
@@ -48,8 +40,8 @@ public static class DemoPanel
             BorderRadius = 16,
             BorderColor = "#ffffff15",
             BorderWidth = 1,
-            BoxShadow = new S.BoxShadow { OffsetY = 8, Blur = 32, Color = "rgba(0,0,0,0.5)" },
-            Padding = new S.EdgeValues(10),
+            BoxShadow = new S.BoxShadow { Blur = 12, Color = "rgba(0,0,0,0.5)" },
+            Padding = new S.EdgeValues(20),
             Cursor = S.CursorType.Pointer,
         },
             Header(tab, setTab),
@@ -198,19 +190,25 @@ public static class DemoPanel
 
     private static VNode RenderStyleShowcase()
     {
+        // Animate gradient angle — read Time.time directly (no state needed)
+        var angle = UnityEngine.Time.time * 90f % 360f;
+
+        // Schedule re-render next frame to keep animation running
+        Core.Scheduler.ScheduleRender(Hooks.HooksRuntime.Current.ComponentId);
+
         return Div(new S.Style { Gap = 12 },
             Div(new S.Style
             {
                 BackgroundGradient = new S.Gradient
                 {
                     Type = S.GradientType.Linear,
-                    Angle = 135,
+                    Angle = angle,
                     ColorA = "#667eea",
                     ColorB = "#764ba2",
                 },
-                BorderRadius = 12,
+                BorderRadii = new S.CornerRadius(12, 12, 12, 0),
                 Padding = new S.EdgeValues(20),
-                BoxShadow = new S.BoxShadow { OffsetY = 4, Blur = 16, Color = "rgba(102,126,234,0.3)" },
+                BoxShadow = new S.BoxShadow {Blur = 8, Spread = 2, Color = "rgba(118,75,162,0.5)" },
             },
                 Text("Gradient Card", new S.Style { FontSize = 18, FontWeight = 700, Color = "#fff" }),
                 Text("With box shadow and rounded corners", new S.Style { FontSize = 13, Color = "rgba(255,255,255,0.7)" })
@@ -232,9 +230,33 @@ public static class DemoPanel
             },
                 Text("Hover Effects", new S.Style { FontSize = 14, FontWeight = 600, Color = "#e0e0e0" }),
                 Div(new S.Style { FlexDirection = S.FlexDirection.Row, Gap = 8 },
-                    HoverBox("Scale", "#7c3aed"),
-                    HoverBox("Glow", "#3b82f6"),
-                    HoverBox("Dim", "#22c55e")
+                    // Scale: spread shadow creates "grow" illusion on hover
+                    Div(new S.Style
+                    {
+                        FlexGrow = 1, Background = "#7c3aed", BorderRadius = 8,
+                        Padding = new S.EdgeValues(16), AlignItems = S.AlignItems.Center,
+                        Cursor = S.CursorType.Pointer, Opacity = 0.8f,
+                        Hover = new S.Style { Opacity = 1f, BoxShadow = new S.BoxShadow { Blur = 0, Spread = 6, Color = "#7c3aed" } },
+                        Transitions = new[] { new S.Transition { Property = "all", Duration = 0.2f, Easing = S.EasingType.Ease } },
+                    }, Text("Scale", new S.Style { FontSize = 13, FontWeight = 600, Color = "#fff" })),
+                    // Glow: colored shadow appears on hover
+                    Div(new S.Style
+                    {
+                        FlexGrow = 1, Background = "#3b82f6", BorderRadius = 8,
+                        Padding = new S.EdgeValues(16), AlignItems = S.AlignItems.Center,
+                        Cursor = S.CursorType.Pointer, Opacity = 0.8f,
+                        Hover = new S.Style { Opacity = 1f, BoxShadow = new S.BoxShadow { Blur = 20, Spread = 4, Color = "rgba(59,130,246,0.6)" } },
+                        Transitions = new[] { new S.Transition { Property = "all", Duration = 0.2f, Easing = S.EasingType.Ease } },
+                    }, Text("Glow", new S.Style { FontSize = 13, FontWeight = 600, Color = "#fff" })),
+                    // Dim: fades out on hover
+                    Div(new S.Style
+                    {
+                        FlexGrow = 1, Background = "#22c55e", BorderRadius = 8,
+                        Padding = new S.EdgeValues(16), AlignItems = S.AlignItems.Center,
+                        Cursor = S.CursorType.Pointer, Opacity = 1f,
+                        Hover = new S.Style { Opacity = 0.4f },
+                        Transitions = new[] { new S.Transition { Property = "opacity", Duration = 0.2f, Easing = S.EasingType.Ease } },
+                    }, Text("Dim", new S.Style { FontSize = 13, FontWeight = 600, Color = "#fff" }))
                 )
             )
         );
@@ -249,6 +271,10 @@ public static class DemoPanel
             BorderRadius = 8,
             Padding = new S.EdgeValues(12),
             AlignItems = S.AlignItems.Center,
+            Cursor = S.CursorType.Pointer,
+            Opacity = 0.85f,
+            Hover = new S.Style { Opacity = 1f, BorderWidth = 2, BorderColor = "#ffffff40" },
+            Transitions = new[] { new S.Transition { Property = "all", Duration = 0.15f, Easing = S.EasingType.Ease } },
         },
             Text(label, new S.Style { FontSize = 12, FontWeight = 600, Color = "#fff" })
         );
@@ -263,10 +289,14 @@ public static class DemoPanel
             BorderRadius = 8,
             Padding = new S.EdgeValues(16),
             AlignItems = S.AlignItems.Center,
-            Opacity = 0.7f,
+            Opacity = 0.6f,
             Cursor = S.CursorType.Pointer,
-            Hover = new S.Style { Opacity = 1f },
-            Transitions = new[] { new S.Transition { Property = "opacity", Duration = 0.2f, Easing = S.EasingType.Ease } },
+            Hover = new S.Style
+            {
+                Opacity = 1f,
+                BoxShadow = new S.BoxShadow { Blur = 16, Spread = 2, Color = color },
+            },
+            Transitions = new[] { new S.Transition { Property = "all", Duration = 0.2f, Easing = S.EasingType.Ease } },
         },
             Text(label, new S.Style { FontSize = 13, FontWeight = 600, Color = "#fff" })
         );
@@ -279,14 +309,14 @@ public static class DemoPanel
 
     private static VNode RenderListTab()
     {
-        var (items, setItems) = UseState(new[] { "Item 1", "Item 2", "Item 3" });
+        var (items, setItems) = UseState(new[] { (id: 1, name: "Item 1"), (id: 2, name: "Item 2"), (id: 3, name: "Item 3") });
         var (nextId, setNextId) = UseState(4);
 
         return Div(new S.Style { Gap = 12 },
             Div(new S.Style { FlexDirection = S.FlexDirection.Row, Gap = 8 },
                 Button("Add Item", () =>
                 {
-                    setItems(items.Append($"Item {nextId}").ToArray());
+                    setItems(items.Append((id: nextId, name: $"Item {nextId}")).ToArray());
                     setNextId(nextId + 1);
                 }, new S.Style
                 {
@@ -340,16 +370,59 @@ public static class DemoPanel
                         FlexDirection = S.FlexDirection.Row,
                         JustifyContent = S.JustifyContent.SpaceBetween,
                         AlignItems = S.AlignItems.Center,
+                        FlexShrink = 0,
                         Padding = new S.EdgeValues(8, 12),
                         Background = i % 2 == 0 ? "#1a1a2e" : "#242236",
                         BorderRadius = 6,
                         Hover = new S.Style { Background = "#3d3a43" },
                         Transitions = new[] { new S.Transition { Property = "background", Duration = 0.1f, Easing = S.EasingType.Ease } },
                     },
-                        Text(item, new S.Style { FontSize = 14, Color = "#e0e0e0" }),
-                        Text($"#{i + 1}", new S.Style { FontSize = 12, Color = "#6b7280" })
+                        Text(item.name, new S.Style { FontSize = 14, Color = "#e0e0e0", FlexGrow = 1 }),
+                        Div(new S.Style { FlexDirection = S.FlexDirection.Row, Gap = 4 },
+                        Button("+", () =>
+                        {
+                            var newItems = items.ToList();
+                            newItems.Insert(i + 1, (id: nextId, name: item.name));
+                            setItems(newItems.ToArray());
+                            setNextId(nextId + 1);
+                        }, new S.Style
+                        {
+                            Width = S.StyleValue.Px(28),
+                            Height = S.StyleValue.Px(28),
+                            Background = "#3b82f6",
+                            BorderRadius = 6,
+                            Color = "#fff",
+                            FontSize = 13,
+                            FontWeight = 700,
+                            TextAlign = S.TextAlign.Center,
+                            Padding = new S.EdgeValues(0),
+                            Cursor = S.CursorType.Pointer,
+                            Opacity = 0.7f,
+                            Hover = new S.Style { Opacity = 1f, Background = "#2563eb" },
+                        }),
+                        Button("\u2715", () =>
+                        {
+                            setItems(items.Where((_, j) => j != i).ToArray());
+                        }, new S.Style
+                        {
+                            Width = S.StyleValue.Px(28),
+                            Height = S.StyleValue.Px(28),
+                            Background = "#ef4444",
+                            BorderRadius = 6,
+                            Color = "#fff",
+                            FontSize = 13,
+                            FontWeight = 700,
+                            AlignItems = S.AlignItems.Center,
+                            JustifyContent = S.JustifyContent.Center,
+                            TextAlign = S.TextAlign.Center,
+                            Padding = new S.EdgeValues(0),
+                            Cursor = S.CursorType.Pointer,
+                            Opacity = 0.7f,
+                            Hover = new S.Style { Opacity = 1f, Background = "#dc2626" },
+                        })
+                        ) // close button row Div
                     );
-                    node.Key = item;
+                    node.Key = item.id.ToString();
                     return node;
                 }).ToArray()
             ),

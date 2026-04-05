@@ -20,13 +20,13 @@ public partial class ExamplePlugin : BasePlugin
         try
         {
             var handle = UI.Render(DemoPanel.Render);
-            Log.LogInfo($"[ReactUI.Example] Mounted root, handle={handle.RootId}, rootNode={handle.RootNode?.Type}");
-            Log.LogInfo($"[ReactUI.Example] Root children count: {handle.RootNode?.Children.Count}");
+            var speakingHandle = UI.Render(SpeakingOverlay.Render);
+            Log.LogInfo($"[ReactUI.Example] Mounted DemoPanel={handle.RootId}, Speaking={speakingHandle.RootId}");
         }
         catch (Exception ex)
         {
             Log.LogError($"[ReactUI.Example] Mount FAILED: {ex}");
         }
-        Log.LogInfo("[ReactUI.Example] Press F9 to toggle demo panel");
+        Log.LogInfo("[ReactUI.Example] F9=Demo panel");
     }
 }

@@ -36,14 +36,29 @@ public static class Scheduler
     }
 
     /// <summary>
+    /// Marks ALL registered components as dirty. Used by KeyToggle to ensure toggles take effect immediately.
+    /// </summary>
+    public static void ScheduleRenderAll()
+    {
+        foreach (var id in _componentTrees.Keys)
+            _dirtyComponents.Add(id);
+        _renderScheduled = true;
+    }
+
+    /// <summary>
     /// Flushes all pending renders. Re-invokes dirty components' render functions,
     /// reconciles against the committed tree, and updates layout.
     /// Call this once per frame from the plugin's Update loop.
     /// </summary>
+    private static int _flushDepth;
+
     public static void FlushRenders()
     {
         if (!_renderScheduled) return;
         _renderScheduled = false;
+        _flushDepth++;
+        try
+        {
 
         // Snapshot dirty set (components may schedule more renders during reconciliation)
         var dirty = new List<int>(_dirtyComponents);
@@ -103,10 +118,15 @@ public static class Scheduler
         // After render + layout, flush effects
         FlushEffects();
 
-        // Check if any components became dirty during effect execution
-        if (_renderScheduled)
+        // Check if any components became dirty during effect execution (cap depth to prevent stack overflow)
+        if (_renderScheduled && _flushDepth < 5)
         {
-            FlushRenders(); // recursive — safe because dirty set was cleared above
+            FlushRenders();
+        }
+        }
+        finally
+        {
+            _flushDepth--;
         }
     }
 

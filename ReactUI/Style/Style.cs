@@ -51,7 +51,7 @@ public class Style
     public UIColor? Background;
     public Gradient? BackgroundGradient;
     public float? BorderRadius;
-    public (float TopLeft, float TopRight, float BottomRight, float BottomLeft)? BorderRadii;
+    public CornerRadius? BorderRadii;
     public UIColor? BorderColor;
     public float? BorderWidth;
     public BoxShadow? BoxShadow;
