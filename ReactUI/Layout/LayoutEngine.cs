@@ -101,6 +101,10 @@ public static class LayoutEngine
 
     private static void ApplyLayout(UINode uiNode, LayoutNode layoutNode)
     {
+        if (_logCount <= 2)
+            Plugin.ReactUIPlugin.Logger.LogInfo(
+                $"[Apply] {uiNode.Type} layout=({layoutNode.ComputedX:F0},{layoutNode.ComputedY:F0},{layoutNode.ComputedWidth:F0},{layoutNode.ComputedHeight:F0}) uiChildren={uiNode.Children.Count} layoutChildren={layoutNode.Children.Count}");
+
         uiNode.ScreenRect = new Rect(
             layoutNode.ComputedX,
             layoutNode.ComputedY,

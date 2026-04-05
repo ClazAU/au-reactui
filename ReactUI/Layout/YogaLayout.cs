@@ -89,9 +89,12 @@ public static class YogaLayout
         {
             float mw = IsNaN(nodeW) ? availableWidth : nodeW;
             float mh = IsNaN(nodeH) ? availableHeight : nodeH;
-            MeasureMode mwm = IsNaN(nodeW) ? (IsNaN(availableWidth) ? MeasureMode.Undefined : MeasureMode.AtMost) : MeasureMode.Exactly;
-            MeasureMode mhm = IsNaN(nodeH) ? (IsNaN(availableHeight) ? MeasureMode.Undefined : MeasureMode.AtMost) : MeasureMode.Exactly;
-            var measured = node.MeasureFunc(OrZero(mw), mwm, OrZero(mh), mhm);
+            // If available is NaN or 0, give leaf nodes freedom to measure unconstrained
+            if (IsNaN(mw) || mw <= 0) mw = 100000f;
+            if (IsNaN(mh) || mh <= 0) mh = 100000f;
+            MeasureMode mwm = IsNaN(nodeW) ? MeasureMode.AtMost : MeasureMode.Exactly;
+            MeasureMode mhm = IsNaN(nodeH) ? MeasureMode.AtMost : MeasureMode.Exactly;
+            var measured = node.MeasureFunc(mw, mwm, mh, mhm);
             if (IsNaN(nodeW)) nodeW = measured.w + padH;
             if (IsNaN(nodeH)) nodeH = measured.h + padV;
             nodeW = Clamp(nodeW, node.MinWidth, node.MaxWidth);
@@ -110,10 +113,31 @@ public static class YogaLayout
         }
 
         // Inner space available for children
-        float innerW = IsNaN(nodeW) ? (IsNaN(availableWidth) ? float.NaN : availableWidth - padH) : nodeW - padH;
-        float innerH = IsNaN(nodeH) ? (IsNaN(availableHeight) ? float.NaN : availableHeight - padV) : nodeH - padV;
+        // Inner space: main axis always uses available space (needed for flex distribution),
+        // cross axis is NaN when auto + not Exactly (so children don't stretch to huge values)
+        float innerW, innerH;
+        if (row)
+        {
+            // Row: main=width (always use available), cross=height (NaN if auto)
+            innerW = IsNaN(nodeW) ? (IsNaN(availableWidth) ? float.NaN : availableWidth - padH) : nodeW - padH;
+            innerH = IsNaN(nodeH)
+                ? (heightMode == MeasureMode.Exactly ? availableHeight - padV : float.NaN)
+                : nodeH - padV;
+        }
+        else
+        {
+            // Column: main=height (always use available), cross=width (NaN if auto)
+            innerH = IsNaN(nodeH) ? (IsNaN(availableHeight) ? float.NaN : availableHeight - padV) : nodeH - padV;
+            innerW = IsNaN(nodeW)
+                ? (widthMode == MeasureMode.Exactly ? availableWidth - padH : float.NaN)
+                : nodeW - padH;
+        }
         if (!IsNaN(innerW)) innerW = Max(innerW, 0);
         if (!IsNaN(innerH)) innerH = Max(innerH, 0);
+
+        bool crossDefinite = row
+            ? (!IsNaN(node.Height) || heightMode == MeasureMode.Exactly)
+            : (!IsNaN(node.Width) || widthMode == MeasureMode.Exactly);
 
         float innerMain = row ? innerW : innerH;
         float innerCross = row ? innerH : innerW;
@@ -140,7 +164,7 @@ public static class YogaLayout
         for (int li = 0; li < lines.Count; li++)
         {
             var line = lines[li];
-            ResolveFlexLine(line, node, row, innerMain, innerCross);
+            ResolveFlexLine(line, node, row, innerMain, innerCross, crossDefinite);
             totalLineCross += line.CrossSize;
         }
         // Add gap between lines
@@ -264,35 +288,44 @@ public static class YogaLayout
         // If still NaN, we need to measure/layout the child to get intrinsic size
         if (IsNaN(basis))
         {
-            // Preliminary layout of child to determine intrinsic main size
-            float childAvailMain = float.NaN; // undefined
-            float childAvailCross = IsNaN(innerCross) ? float.NaN : innerCross;
+            // For intrinsic sizing: use large available on BOTH axes for MeasureFunc,
+            // but mark cross as AtMost (not Exactly) so stretch doesn't expand to huge values.
+            // Use Undefined for main so container doesn't take available as definite.
+            float crossAvail = IsNaN(innerCross) ? 100000f : innerCross;
+
             float caw, cah;
+            MeasureMode cwm, chm;
             if (row)
             {
-                caw = childAvailMain;
-                cah = childAvailCross;
+                caw = 100000f; cwm = MeasureMode.AtMost;
+                cah = crossAvail; chm = MeasureMode.AtMost;
             }
             else
             {
-                caw = childAvailCross;
-                cah = childAvailMain;
+                caw = crossAvail; cwm = MeasureMode.AtMost;
+                cah = 100000f; chm = MeasureMode.AtMost;
             }
-            // Pass large available size for undefined dims so children can measure freely
-            LayoutInternal(child, IsNaN(caw) ? 100000f : caw, IsNaN(cah) ? 100000f : cah,
-                           IsNaN(caw) ? MeasureMode.AtMost : MeasureMode.AtMost,
-                           IsNaN(cah) ? MeasureMode.AtMost : MeasureMode.AtMost);
+            LayoutInternal(child, caw, cah, cwm, chm);
             basis = GetComputedMain(child, row);
         }
 
         // Apply min/max on main axis
         basis = Clamp(basis, MainMinSize(child, row), MainMaxSize(child, row));
-        return Max(basis, 0);
+        float result = Max(basis, 0);
+        if (_dbgCount < 30)
+        {
+            _dbgCount++;
+            bool hasMeasure = child.MeasureFunc != null;
+            Plugin.ReactUIPlugin.Logger?.LogInfo(
+                $"[FlexBasis] row={row} basis={result:F0} hasMeasure={hasMeasure} w={child.ComputedWidth:F0} h={child.ComputedHeight:F0} children={child.Children.Count}");
+        }
+        return result;
     }
+    static int _dbgCount;
 
     // --------------------------------------------------------- resolve a flex line (grow/shrink + cross sizes)
     private static void ResolveFlexLine(FlexLine line, LayoutNode parent, bool row,
-                                        float innerMain, float innerCross)
+                                        float innerMain, float innerCross, bool crossDefinite = true)
     {
         if (line.Items.Count == 0) return;
 
@@ -403,8 +436,9 @@ public static class YogaLayout
             }
 
             // Handle AlignItems.Stretch: if cross size is auto and align is stretch, fill cross
+            // Only stretch when parent's cross axis is definite (explicit size or Exactly mode)
             AlignItems effectiveAlign = GetEffectiveAlign(child, parent);
-            if (effectiveAlign == AlignItems.Stretch && IsNaN(CrossSize(child, row)) && !IsNaN(childCrossAvail))
+            if (effectiveAlign == AlignItems.Stretch && IsNaN(CrossSize(child, row)) && !IsNaN(childCrossAvail) && crossDefinite)
             {
                 float crossMargins = CrossMarginStart(child, row) + CrossMarginEnd(child, row);
                 float stretchedCross = childCrossAvail - crossMargins;
