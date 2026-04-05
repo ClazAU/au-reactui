@@ -20,8 +20,7 @@ public partial class ExamplePlugin : BasePlugin
         try
         {
             var handle = UI.Render(DemoPanel.Render);
-            var speakingHandle = UI.Render(SpeakingOverlay.Render);
-            Log.LogInfo($"[ReactUI.Example] Mounted DemoPanel={handle.RootId}, Speaking={speakingHandle.RootId}");
+            Log.LogInfo($"[ReactUI.Example] Mounted DemoPanel={handle.RootId}");
         }
         catch (Exception ex)
         {
