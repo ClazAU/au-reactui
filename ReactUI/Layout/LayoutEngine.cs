@@ -1,4 +1,6 @@
+using ReactUI.Animation;
 using ReactUI.Core;
+using ReactUI.Style;
 
 namespace ReactUI.Layout;
 
@@ -43,9 +45,14 @@ public static class LayoutEngine
 
         var ln = new LayoutNode();
 
-        // Apply style to layout node
+        // Apply style to layout node (with transitions for animated layout properties)
         if (uiNode.ComputedStyle != null)
-            LayoutBridge.ApplyStyle(ln, uiNode.ComputedStyle);
+        {
+            var style = uiNode.ComputedStyle;
+            if (style.Transitions != null && style.Transitions.Length > 0)
+                style = ApplyLayoutTransitions(uiNode, style);
+            LayoutBridge.ApplyStyle(ln, style);
+        }
 
         // Text nodes need a measure function
         if (uiNode.Type == "text" && uiNode.LastVNode?.TextContent != null)
@@ -185,5 +192,34 @@ public static class LayoutEngine
                     ApplyLayout(child, layoutNode.Children[layoutIdx++]);
             }
         }
+    }
+
+    private static ReactUI.Style.Style ApplyLayoutTransitions(UINode node, ReactUI.Style.Style style)
+    {
+        var tr = style.Transitions;
+        var result = style;
+
+        if (style.Margin.HasValue)
+        {
+            var animated = TransitionEngine.GetAnimatedValue(node, "Margin", style.Margin.Value, tr);
+            if (animated is EdgeValues e)
+                result.Margin = e;
+        }
+
+        if (style.Padding.HasValue)
+        {
+            var animated = TransitionEngine.GetAnimatedValue(node, "Padding", style.Padding.Value, tr);
+            if (animated is EdgeValues e)
+                result.Padding = e;
+        }
+
+        if (style.Inset.HasValue)
+        {
+            var animated = TransitionEngine.GetAnimatedValue(node, "Inset", style.Inset.Value, tr);
+            if (animated is EdgeValues e)
+                result.Inset = e;
+        }
+
+        return result;
     }
 }

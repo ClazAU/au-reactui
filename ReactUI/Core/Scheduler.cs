@@ -14,6 +14,7 @@ public static class Scheduler
     private static readonly HashSet<int> _dirtyComponents = new();
     private static bool _renderScheduled;
     private static readonly List<Action> _pendingEffects = new();
+    private static readonly List<Action> _postLayoutCallbacks = new();
     private static readonly Dictionary<int, ComponentEntry> _componentTrees = new();
     private static readonly List<RenderHandle> _roots = new();
     private static int _nextRootId;
@@ -170,6 +171,43 @@ public static class Scheduler
     /// Returns the root UINodes of all mounted render handles.
     /// Used by the plugin behaviour to drive input and rendering each frame.
     /// </summary>
+    /// <summary>Find a UINode by key in all roots.</summary>
+    public static UINode? FindNodeByKey(string key)
+    {
+        foreach (var handle in _roots)
+        {
+            if (handle.RootNode != null)
+            {
+                var found = FindByKey(handle.RootNode, key);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private static UINode? FindByKey(UINode node, string key)
+    {
+        if (node.Key == key) return node;
+        for (int i = 0; i < node.Children.Count; i++)
+        {
+            var found = FindByKey(node.Children[i], key);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    /// <summary>Register a callback to run after layout each frame.</summary>
+    public static void OnPostLayout(Action callback) => _postLayoutCallbacks.Add(callback);
+
+    /// <summary>Run and clear all post-layout callbacks.</summary>
+    public static void FlushPostLayoutCallbacks()
+    {
+        for (int i = 0; i < _postLayoutCallbacks.Count; i++)
+        {
+            try { _postLayoutCallbacks[i](); } catch { }
+        }
+    }
+
     public static List<UINode> GetRoots()
     {
         var roots = new List<UINode>();

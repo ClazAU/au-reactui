@@ -129,12 +129,16 @@ public static class TransitionEngine
             anim.Easing = tr2.Easing;
             anim.Elapsed = 0;
             anim.IsActive = true;
+            UnityEngine.Debug.Log($"[Transition] Started {property}: {currentValue} → {targetValue} (dur={tr2.Duration}s, node={nodeKey})");
         }
 
         if (!anim.IsActive)
             return targetValue;
 
-        return GetCurrentInterpolated(anim);
+        var result = GetCurrentInterpolated(anim);
+        if (property == "Margin")
+            UnityEngine.Debug.Log($"[Transition] {property} t={anim.Elapsed:F3}/{anim.Duration:F3} = {result}");
+        return result;
     }
 
     /// <summary>
@@ -144,6 +148,20 @@ public static class TransitionEngine
     {
         int nodeKey = System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(node);
         _animations.Remove(nodeKey);
+    }
+
+    /// <summary>
+    /// Returns true if any animations are currently active.
+    /// </summary>
+    public static bool HasActiveAnimations
+    {
+        get
+        {
+            foreach (var kvp in _animations)
+                foreach (var anim in kvp.Value)
+                    if (anim.Value.IsActive) return true;
+            return false;
+        }
     }
 
     /// <summary>

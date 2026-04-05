@@ -2,20 +2,20 @@ namespace ReactUI.Style;
 
 public struct EdgeValues
 {
-    public float Top, Right, Bottom, Left;
+    public StyleValue Top, Right, Bottom, Left;
 
     public EdgeValues(float all)
     {
-        Top = Right = Bottom = Left = all;
+        Top = Right = Bottom = Left = StyleValue.Px(all);
     }
 
     public EdgeValues(float vertical, float horizontal)
     {
-        Top = Bottom = vertical;
-        Right = Left = horizontal;
+        Top = Bottom = StyleValue.Px(vertical);
+        Right = Left = StyleValue.Px(horizontal);
     }
 
-    public EdgeValues(float top, float right, float bottom, float left)
+    public EdgeValues(StyleValue top, StyleValue right, StyleValue bottom, StyleValue left)
     {
         Top = top;
         Right = right;
@@ -27,16 +27,23 @@ public struct EdgeValues
     public static implicit operator EdgeValues((float v, float h) t) => new(t.v, t.h);
     public static implicit operator EdgeValues((float t, float r, float b, float l) t) => new(t.t, t.r, t.b, t.l);
 
+    /// <summary>Resolve a single edge to pixels given a parent size for percent resolution.</summary>
+    public static float Resolve(StyleValue sv, float parentSize)
+    {
+        return sv.Unit switch
+        {
+            StyleUnit.Px => sv.Value,
+            StyleUnit.Percent => parentSize * sv.Value / 100f,
+            _ => 0f,
+        };
+    }
+
     public static EdgeValues Lerp(EdgeValues a, EdgeValues b, float t) => new(
-        a.Top + (b.Top - a.Top) * t,
-        a.Right + (b.Right - a.Right) * t,
-        a.Bottom + (b.Bottom - a.Bottom) * t,
-        a.Left + (b.Left - a.Left) * t);
+        StyleValue.Lerp(a.Top, b.Top, t),
+        StyleValue.Lerp(a.Right, b.Right, t),
+        StyleValue.Lerp(a.Bottom, b.Bottom, t),
+        StyleValue.Lerp(a.Left, b.Left, t));
 
     public override string ToString() =>
-        Top == Right && Right == Bottom && Bottom == Left
-            ? $"{Top}"
-            : Top == Bottom && Right == Left
-                ? $"{Top} {Right}"
-                : $"{Top} {Right} {Bottom} {Left}";
+        $"{Top} {Right} {Bottom} {Left}";
 }

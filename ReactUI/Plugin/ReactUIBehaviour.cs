@@ -77,10 +77,17 @@ public class ReactUIBehaviour : MonoBehaviour
             Core.Scheduler.FlushRenders();
             Animation.TransitionEngine.Tick(Time.deltaTime);
 
+            // Keep re-rendering while animations are in flight
+            if (Animation.TransitionEngine.HasActiveAnimations)
+                Core.Scheduler.ScheduleRenderAll();
+
             // Run layout pass
             var roots = Core.Scheduler.GetRoots();
             for (int i = 0; i < roots.Count; i++)
                 Layout.LayoutEngine.ComputeLayout(roots[i], Screen.width, Screen.height);
+
+            // Fire post-layout callbacks
+            Core.Scheduler.FlushPostLayoutCallbacks();
         }
         catch (Exception ex)
         {

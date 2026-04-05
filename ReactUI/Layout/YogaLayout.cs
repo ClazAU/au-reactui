@@ -400,6 +400,11 @@ public static class YogaLayout
                     ch = child.Height;
                     chm = MeasureMode.Exactly;
                 }
+                else if (!IsNaN(child.HeightPercent) && !IsNaN(innerCross))
+                {
+                    ch = (innerCross * child.HeightPercent / 100f);
+                    chm = MeasureMode.Exactly;
+                }
             }
             else
             {
@@ -412,6 +417,11 @@ public static class YogaLayout
                 if (!IsNaN(child.Width))
                 {
                     cw = child.Width;
+                    cwm = MeasureMode.Exactly;
+                }
+                else if (!IsNaN(child.WidthPercent) && !IsNaN(innerCross))
+                {
+                    cw = (innerCross * child.WidthPercent / 100f);
                     cwm = MeasureMode.Exactly;
                 }
             }
@@ -588,14 +598,20 @@ public static class YogaLayout
     {
         float parentW = parent.ComputedWidth;
         float parentH = parent.ComputedHeight;
+        float contentW = parentW - parent.PaddingLeft - parent.PaddingRight;
+        float contentH = parentH - parent.PaddingTop - parent.PaddingBottom;
 
-        // Determine child width
+        // Determine child width (resolve percent against parent content area)
         float childW = child.Width;
+        if (IsNaN(childW) && !IsNaN(child.WidthPercent))
+            childW = contentW * child.WidthPercent / 100f;
         if (IsNaN(childW) && !IsNaN(child.PositionLeft) && !IsNaN(child.PositionRight))
             childW = parentW - child.PositionLeft - child.PositionRight - parent.PaddingLeft - parent.PaddingRight;
 
-        // Determine child height
+        // Determine child height (resolve percent against parent content area)
         float childH = child.Height;
+        if (IsNaN(childH) && !IsNaN(child.HeightPercent))
+            childH = contentH * child.HeightPercent / 100f;
         if (IsNaN(childH) && !IsNaN(child.PositionTop) && !IsNaN(child.PositionBottom))
             childH = parentH - child.PositionTop - child.PositionBottom - parent.PaddingTop - parent.PaddingBottom;
 
@@ -618,21 +634,31 @@ public static class YogaLayout
         // Don't override height if it was auto — let LayoutInternal's computed value stand
         if (!IsNaN(childH)) child.ComputedHeight = Max(Clamp(childH, child.MinHeight, child.MaxHeight), 0);
 
+        // Resolve percent margins against parent content area
+        float mLeft = child.MarginLeftRaw.Unit == Style.StyleUnit.Percent
+            ? contentW * child.MarginLeftRaw.Value / 100f : child.MarginLeft;
+        float mRight = child.MarginRightRaw.Unit == Style.StyleUnit.Percent
+            ? contentW * child.MarginRightRaw.Value / 100f : child.MarginRight;
+        float mTop = child.MarginTopRaw.Unit == Style.StyleUnit.Percent
+            ? contentH * child.MarginTopRaw.Value / 100f : child.MarginTop;
+        float mBottom = child.MarginBottomRaw.Unit == Style.StyleUnit.Percent
+            ? contentH * child.MarginBottomRaw.Value / 100f : child.MarginBottom;
+
         // Position X
         if (!IsNaN(child.PositionLeft))
-            child.ComputedX = parent.PaddingLeft + child.PositionLeft + child.MarginLeft;
+            child.ComputedX = parent.PaddingLeft + child.PositionLeft + mLeft;
         else if (!IsNaN(child.PositionRight))
-            child.ComputedX = parentW - parent.PaddingRight - child.PositionRight - child.ComputedWidth - child.MarginRight;
+            child.ComputedX = parentW - parent.PaddingRight - child.PositionRight - child.ComputedWidth - mRight;
         else
-            child.ComputedX = parent.PaddingLeft + child.MarginLeft;
+            child.ComputedX = parent.PaddingLeft + mLeft;
 
         // Position Y
         if (!IsNaN(child.PositionTop))
-            child.ComputedY = parent.PaddingTop + child.PositionTop + child.MarginTop;
+            child.ComputedY = parent.PaddingTop + child.PositionTop + mTop;
         else if (!IsNaN(child.PositionBottom))
-            child.ComputedY = parentH - parent.PaddingBottom - child.PositionBottom - child.ComputedHeight - child.MarginBottom;
+            child.ComputedY = parentH - parent.PaddingBottom - child.PositionBottom - child.ComputedHeight - mBottom;
         else
-            child.ComputedY = parent.PaddingTop + child.MarginTop;
+            child.ComputedY = parent.PaddingTop + mTop;
     }
 
     // --------------------------------------------------------- resolve absolute positions (recursive)

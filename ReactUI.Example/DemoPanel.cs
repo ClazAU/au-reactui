@@ -22,7 +22,7 @@ public static class DemoPanel
         var (posX, setPosX) = UseState(0f);
         var (posY, setPosY) = UseState(0f);
 
-        if (!ReactUI.Input.KeyToggle.Get(UnityEngine.KeyCode.F9)) return Div();
+        if (Input.KeyToggle.Get(UnityEngine.KeyCode.F9)) return Div();
 
         // Register this component as draggable — InputSystem tracks drag every frame
         var capturedPosX = posX; var capturedPosY = posY;

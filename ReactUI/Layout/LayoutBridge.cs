@@ -78,9 +78,19 @@ public static class LayoutBridge
 
         // Dimensions
         if (style.Width.HasValue)
-            node.Width = ResolvePx(style.Width.Value);
+        {
+            if (style.Width.Value.Unit == StyleUnit.Percent)
+                node.WidthPercent = style.Width.Value.Value;
+            else
+                node.Width = ResolvePx(style.Width.Value);
+        }
         if (style.Height.HasValue)
-            node.Height = ResolvePx(style.Height.Value);
+        {
+            if (style.Height.Value.Unit == StyleUnit.Percent)
+                node.HeightPercent = style.Height.Value.Value;
+            else
+                node.Height = ResolvePx(style.Height.Value);
+        }
         if (style.MinWidth.HasValue)
             node.MinWidth = ResolvePx(style.MinWidth.Value);
         if (style.MinHeight.HasValue)
@@ -90,24 +100,28 @@ public static class LayoutBridge
         if (style.MaxHeight.HasValue)
             node.MaxHeight = ResolvePx(style.MaxHeight.Value);
 
-        // Padding
+        // Padding (resolve to px, percent not supported for padding)
         if (style.Padding.HasValue)
         {
             var p = style.Padding.Value;
-            node.PaddingTop = p.Top;
-            node.PaddingRight = p.Right;
-            node.PaddingBottom = p.Bottom;
-            node.PaddingLeft = p.Left;
+            node.PaddingTop = ResolveEdge(p.Top);
+            node.PaddingRight = ResolveEdge(p.Right);
+            node.PaddingBottom = ResolveEdge(p.Bottom);
+            node.PaddingLeft = ResolveEdge(p.Left);
         }
 
-        // Margin
+        // Margin (store raw StyleValues for percent resolution during layout)
         if (style.Margin.HasValue)
         {
             var m = style.Margin.Value;
-            node.MarginTop = m.Top;
-            node.MarginRight = m.Right;
-            node.MarginBottom = m.Bottom;
-            node.MarginLeft = m.Left;
+            node.MarginTopRaw = m.Top;
+            node.MarginRightRaw = m.Right;
+            node.MarginBottomRaw = m.Bottom;
+            node.MarginLeftRaw = m.Left;
+            node.MarginTop = ResolveEdge(m.Top);
+            node.MarginRight = ResolveEdge(m.Right);
+            node.MarginBottom = ResolveEdge(m.Bottom);
+            node.MarginLeft = ResolveEdge(m.Left);
         }
 
         // Gap
@@ -128,10 +142,10 @@ public static class LayoutBridge
         if (style.Inset.HasValue)
         {
             var inset = style.Inset.Value;
-            node.PositionTop = inset.Top;
-            node.PositionRight = inset.Right;
-            node.PositionBottom = inset.Bottom;
-            node.PositionLeft = inset.Left;
+            node.PositionTop = ResolvePx(inset.Top);
+            node.PositionRight = ResolvePx(inset.Right);
+            node.PositionBottom = ResolvePx(inset.Bottom);
+            node.PositionLeft = ResolvePx(inset.Left);
         }
 
         // Overflow
@@ -157,14 +171,26 @@ public static class LayoutBridge
         => (node.ComputedX, node.ComputedY, node.ComputedWidth, node.ComputedHeight);
 
     /// <summary>
-    /// Resolve a StyleValue to a pixel float. Auto and Percent return NaN (not yet supported).
+    /// Resolve a StyleValue to a pixel float. Auto and Percent return NaN.
     /// </summary>
     private static float ResolvePx(StyleValue sv)
     {
         return sv.Unit switch
         {
             StyleUnit.Px => sv.Value,
-            _ => float.NaN, // Auto, Percent, Undefined all resolve to NaN (auto)
+            _ => float.NaN,
+        };
+    }
+
+    /// <summary>
+    /// Resolve an edge StyleValue to pixels. Percent returns 0 (resolved later during layout).
+    /// </summary>
+    private static float ResolveEdge(StyleValue sv)
+    {
+        return sv.Unit switch
+        {
+            StyleUnit.Px => sv.Value,
+            _ => 0f,
         };
     }
 }

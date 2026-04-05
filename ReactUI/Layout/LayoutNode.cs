@@ -15,10 +15,13 @@ public class LayoutNode
     public float FlexShrink = 1;
     public float FlexBasis = float.NaN; // NaN = auto
     public float Width = float.NaN, Height = float.NaN;
+    public float WidthPercent = float.NaN, HeightPercent = float.NaN; // 0-100 range
     public float MinWidth = float.NaN, MinHeight = float.NaN;
     public float MaxWidth = float.NaN, MaxHeight = float.NaN;
     public float PaddingTop, PaddingRight, PaddingBottom, PaddingLeft;
     public float MarginTop, MarginRight, MarginBottom, MarginLeft;
+    // Raw margin StyleValues for percent resolution during layout
+    public Style.StyleValue MarginTopRaw, MarginRightRaw, MarginBottomRaw, MarginLeftRaw;
     public float Gap;
     public PositionType Position = PositionType.Relative;
     public float PositionTop = float.NaN, PositionRight = float.NaN;

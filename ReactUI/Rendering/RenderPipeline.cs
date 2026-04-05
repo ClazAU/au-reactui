@@ -69,6 +69,10 @@ public class RenderPipeline
             style = style.Merge(style.Active);
         if (node.IsFocused && style.Focus != null)
             style = style.Merge(style.Focus);
+
+        // Apply transitions for animated properties
+        if (style.Transitions != null && style.Transitions.Length > 0)
+            style = ApplyTransitions(node, style);
         // Apply accumulated scroll offset to get the rendered position
         var rect = new Core.Rect(
             node.ScreenRect.X - scrollOffsetX,
@@ -856,4 +860,57 @@ public class RenderPipeline
     /// Get the current draw command count (for debugging/profiling).
     /// </summary>
     public int CommandCount => _commands.Count;
+
+    private static Style.Style ApplyTransitions(Core.UINode node, Style.Style style)
+    {
+        var tr = style.Transitions;
+        var result = style;
+
+        if (style.Background.HasValue)
+        {
+            var animated = ReactUI.Animation.TransitionEngine.GetAnimatedValue(node, "Background", style.Background.Value, tr);
+            if (animated is Style.UIColor c)
+                result.Background = c;
+        }
+
+        if (style.Color.HasValue)
+        {
+            var animated = ReactUI.Animation.TransitionEngine.GetAnimatedValue(node, "Color", style.Color.Value, tr);
+            if (animated is Style.UIColor c)
+                result.Color = c;
+        }
+
+        if (style.Opacity.HasValue)
+        {
+            var animated = ReactUI.Animation.TransitionEngine.GetAnimatedValue(node, "Opacity", style.Opacity.Value, tr);
+            if (animated is float f)
+                result.Opacity = f;
+        }
+
+        if (style.BorderColor.HasValue)
+        {
+            var animated = ReactUI.Animation.TransitionEngine.GetAnimatedValue(node, "BorderColor", style.BorderColor.Value, tr);
+            if (animated is Style.UIColor c)
+                result.BorderColor = c;
+        }
+
+        // Margin, Padding, Inset are handled in layout-side ApplyLayoutTransitions
+        // — don't duplicate here or it will conflict and restart animations each frame.
+
+        if (style.BorderRadius.HasValue)
+        {
+            var animated = ReactUI.Animation.TransitionEngine.GetAnimatedValue(node, "BorderRadius", style.BorderRadius.Value, tr);
+            if (animated is float f)
+                result.BorderRadius = f;
+        }
+
+        if (style.BorderWidth.HasValue)
+        {
+            var animated = ReactUI.Animation.TransitionEngine.GetAnimatedValue(node, "BorderWidth", style.BorderWidth.Value, tr);
+            if (animated is float f)
+                result.BorderWidth = f;
+        }
+
+        return result;
+    }
 }
