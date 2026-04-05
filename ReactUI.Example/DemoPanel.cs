@@ -20,8 +20,10 @@ public static class DemoPanel
     {
         var (visible, setVisible) = UseState(true);
         var (tab, setTab) = UseState(0);
+        var (posX, setPosX) = UseState(40f);
+        var (posY, setPosY) = UseState(40f);
 
-        // F9 toggle — check each frame via UseEffect with null deps (runs every render)
+        // F9 toggle — check each frame via UseEffect with null deps
         UseEffect(() =>
         {
             if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F9))
@@ -30,18 +32,25 @@ public static class DemoPanel
 
         if (!visible) return Div(); // empty — hidden
 
+        // Register this component as draggable — InputSystem tracks drag every frame
+        var capturedPosX = posX; var capturedPosY = posY;
+        ReactUI.Input.InputSystem.RegisterDraggable(
+            ReactUI.Hooks.HooksRuntime.Current.ComponentId,
+            () => capturedPosX, () => capturedPosY, setPosX, setPosY);
+
         return Div(new S.Style
         {
             Position = S.PositionType.Absolute,
-            Inset = new S.EdgeValues(80, float.NaN, float.NaN, 80),
+            Inset = new S.EdgeValues(posY, float.NaN, float.NaN, posX),
             Width = 420,
-            Height = 400,
+            // Height auto-sizes to content
             Background = "#1a1a2eE8",
             BorderRadius = 16,
             BorderColor = "#ffffff15",
             BorderWidth = 1,
             BoxShadow = new S.BoxShadow { OffsetY = 8, Blur = 32, Color = "rgba(0,0,0,0.5)" },
-            Padding = new S.EdgeValues(20),
+            Padding = new S.EdgeValues(10),
+            Cursor = S.CursorType.Pointer,
         },
             Header(tab, setTab),
             tab switch
@@ -87,12 +96,17 @@ public static class DemoPanel
         bool active = index == activeTab;
         return Button(label, () => setTab(index), new S.Style
         {
+            FlexGrow = 1,
+            MinWidth = S.StyleValue.Px(50),
+            MinHeight = S.StyleValue.Px(50),
             Padding = new S.EdgeValues(6, 14),
             Background = active ? "#7c3aed" : "#2d2a33",
             Color = active ? "#ffffff" : "#a0a0a0",
             BorderRadius = 8,
             FontSize = 13,
             FontWeight = active ? 600 : 400,
+            AlignItems = S.AlignItems.Center,
+            JustifyContent = S.JustifyContent.Center,
             Cursor = S.CursorType.Pointer,
             Hover = new S.Style { Background = active ? "#6d28d9" : "#3d3a43" },
             Transitions = new[] { new S.Transition { Property = "all", Duration = 0.15f, Easing = S.EasingType.Ease } },

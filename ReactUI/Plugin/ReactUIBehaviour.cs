@@ -77,7 +77,18 @@ public class ReactUIBehaviour : MonoBehaviour
     private void OnGUI()
     {
         if (!_initDone || _renderPipeline == null) return;
-        if (Event.current.type != EventType.Repaint) return;
+
+        // Consume input events (click, key, scroll) when mouse is over a ReactUI element.
+        // This prevents clicks/keys from passing through to the game.
+        var evtType = Event.current.type;
+        if (Input.InputSystem.BlockGameInput &&
+            evtType != EventType.Repaint && evtType != EventType.Layout)
+        {
+            Event.current.Use();
+            return;
+        }
+
+        if (evtType != EventType.Repaint) return;
         try
         {
             var roots = Core.Scheduler.GetRoots();

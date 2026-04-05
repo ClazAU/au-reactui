@@ -112,26 +112,16 @@ public static class YogaLayout
             return;
         }
 
-        // Inner space available for children
-        // Inner space: main axis always uses available space (needed for flex distribution),
-        // cross axis is NaN when auto + not Exactly (so children don't stretch to huge values)
+        // Inner space available for children.
+        // Both axes: only use available space when node has explicit size OR Exactly mode (stretch/root).
+        // Otherwise NaN → content-sizing (children don't grow/stretch to huge values).
         float innerW, innerH;
-        if (row)
-        {
-            // Row: main=width (always use available), cross=height (NaN if auto)
-            innerW = IsNaN(nodeW) ? (IsNaN(availableWidth) ? float.NaN : availableWidth - padH) : nodeW - padH;
-            innerH = IsNaN(nodeH)
-                ? (heightMode == MeasureMode.Exactly ? availableHeight - padV : float.NaN)
-                : nodeH - padV;
-        }
-        else
-        {
-            // Column: main=height (always use available), cross=width (NaN if auto)
-            innerH = IsNaN(nodeH) ? (IsNaN(availableHeight) ? float.NaN : availableHeight - padV) : nodeH - padV;
-            innerW = IsNaN(nodeW)
-                ? (widthMode == MeasureMode.Exactly ? availableWidth - padH : float.NaN)
-                : nodeW - padH;
-        }
+        innerW = IsNaN(nodeW)
+            ? (widthMode == MeasureMode.Exactly ? availableWidth - padH : float.NaN)
+            : nodeW - padH;
+        innerH = IsNaN(nodeH)
+            ? (heightMode == MeasureMode.Exactly ? availableHeight - padV : float.NaN)
+            : nodeH - padV;
         if (!IsNaN(innerW)) innerW = Max(innerW, 0);
         if (!IsNaN(innerH)) innerH = Max(innerH, 0);
 

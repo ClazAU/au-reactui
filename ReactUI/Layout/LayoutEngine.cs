@@ -13,27 +13,35 @@ public static class LayoutEngine
     /// </summary>
     public static void ComputeLayout(UINode root, float viewportWidth, float viewportHeight)
     {
-        var layoutRoot = BuildLayoutTree(root);
-        YogaLayout.Calculate(layoutRoot, viewportWidth, viewportHeight);
-        ApplyLayout(root, layoutRoot);
+        var contentLayout = BuildLayoutTree(root);
+
+        // Wrap content in a viewport container so absolute-positioned roots
+        // get proper AtMost sizing (content-size) and relative roots fill the viewport.
+        var viewport = new LayoutNode { Width = viewportWidth, Height = viewportHeight };
+        viewport.AddChild(contentLayout);
+
+        YogaLayout.Calculate(viewport, viewportWidth, viewportHeight);
+        ApplyLayout(root, contentLayout);
     }
 
     private static LayoutNode BuildLayoutTree(UINode uiNode)
     {
-        var ln = new LayoutNode();
-
-        // Component wrappers: create a transparent pass-through container
-        // (don't skip — absolute children need a parent to position relative to)
+        // Component wrappers are layout-transparent: skip the wrapper and return
+        // the child's LayoutNode directly. This prevents __component nodes from
+        // adding unwanted Column/Stretch layout containers.
         if (uiNode.Type == "__component")
         {
-            // No style to apply — just recurse children
+            if (uiNode.Children.Count == 1)
+                return BuildLayoutTree(uiNode.Children[0]);
+
+            // Multi-child fallback (shouldn't happen — components render one root)
+            var wrapper = new LayoutNode();
             foreach (var child in uiNode.Children)
-            {
-                var childLayout = BuildLayoutTree(child);
-                ln.AddChild(childLayout);
-            }
-            return ln;
+                wrapper.AddChild(BuildLayoutTree(child));
+            return wrapper;
         }
+
+        var ln = new LayoutNode();
 
         // Apply style to layout node
         if (uiNode.ComputedStyle != null)
@@ -48,7 +56,7 @@ public static class LayoutEngine
 
             ln.MeasureFunc = (maxWidth, widthMode, maxHeight, heightMode) =>
             {
-                float charWidth = fontSize * 0.5f;
+                float charWidth = fontSize * 0.62f;
                 float textWidth = text.Length * charWidth;
 
                 float availWidth = widthMode == MeasureMode.Undefined ? float.MaxValue : maxWidth;
@@ -74,6 +82,34 @@ public static class LayoutEngine
 
     private static void ApplyLayout(UINode uiNode, LayoutNode layoutNode)
     {
+        // Component wrappers are layout-transparent: they share the same LayoutNode
+        // as their single child. Copy the rect to the wrapper and recurse into the child.
+        if (uiNode.Type == "__component")
+        {
+            uiNode.ScreenRect = new Rect(
+                layoutNode.ComputedX,
+                layoutNode.ComputedY,
+                layoutNode.ComputedWidth,
+                layoutNode.ComputedHeight
+            );
+            if (uiNode.ClipRect.Width == 0 && uiNode.ClipRect.Height == 0)
+                uiNode.ClipRect = new Rect(0, 0, float.MaxValue, float.MaxValue);
+
+            if (uiNode.Children.Count == 1)
+            {
+                // Same layoutNode — the child IS the layoutNode
+                ApplyLayout(uiNode.Children[0], layoutNode);
+            }
+            else
+            {
+                // Multi-child fallback
+                int count = System.Math.Min(uiNode.Children.Count, layoutNode.Children.Count);
+                for (int i = 0; i < count; i++)
+                    ApplyLayout(uiNode.Children[i], layoutNode.Children[i]);
+            }
+            return;
+        }
+
         // YogaLayout.Calculate already converts ComputedX/Y to absolute screen coords
         uiNode.ScreenRect = new Rect(
             layoutNode.ComputedX,
@@ -87,8 +123,22 @@ public static class LayoutEngine
             uiNode.ClipRect = new Rect(0, 0, float.MaxValue, float.MaxValue);
 
         // Recurse — UINode children and LayoutNode children are 1:1
-        int count = System.Math.Min(uiNode.Children.Count, layoutNode.Children.Count);
-        for (int i = 0; i < count; i++)
-            ApplyLayout(uiNode.Children[i], layoutNode.Children[i]);
+        // (with __component nodes already handled above)
+        int layoutIdx = 0;
+        for (int i = 0; i < uiNode.Children.Count; i++)
+        {
+            var child = uiNode.Children[i];
+            if (child.Type == "__component")
+            {
+                // __component was flattened in layout tree — its LayoutNode is at layoutIdx
+                if (layoutIdx < layoutNode.Children.Count)
+                    ApplyLayout(child, layoutNode.Children[layoutIdx++]);
+            }
+            else
+            {
+                if (layoutIdx < layoutNode.Children.Count)
+                    ApplyLayout(child, layoutNode.Children[layoutIdx++]);
+            }
+        }
     }
 }

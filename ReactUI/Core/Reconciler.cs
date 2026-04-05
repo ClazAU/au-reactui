@@ -47,8 +47,11 @@ public static class Reconciler
         if (oldVNode == null || newVNode == null || existingNode == null)
             return null;
 
-        // Case 3: Type changed → destroy old, create new
-        if (oldVNode.Type != newVNode.Type)
+        // Case 3: Type changed (or different component) → destroy old, create new
+        bool typeChanged = oldVNode.Type != newVNode.Type;
+        bool componentChanged = oldVNode.Type == "__component" && newVNode.Type == "__component"
+                                && oldVNode.ComponentId != newVNode.ComponentId;
+        if (typeChanged || componentChanged)
         {
             var idx = parent != null ? parent.Children.IndexOf(existingNode) : index;
             DestroyNode(existingNode);
@@ -66,10 +69,14 @@ public static class Reconciler
         // Case 4: Same type → update in place
         UpdateNode(existingNode, newVNode);
 
-        // Diff children
-        var oldChildren = oldVNode.Children ?? Array.Empty<VNode>();
-        var newChildren = newVNode.Children ?? Array.Empty<VNode>();
-        DiffChildren(existingNode, oldChildren, newChildren);
+        // Component nodes manage their own children via ReRenderComponent (called from UpdateNode).
+        // Don't DiffChildren here — VNode.Children is null for components.
+        if (newVNode.Type != "__component")
+        {
+            var oldChildren = oldVNode.Children ?? Array.Empty<VNode>();
+            var newChildren = newVNode.Children ?? Array.Empty<VNode>();
+            DiffChildren(existingNode, oldChildren, newChildren);
+        }
 
         return existingNode;
     }
@@ -496,8 +503,11 @@ public static class Reconciler
         if (oldVNode == null || newVNode == null || existingNode == null)
             return null;
 
-        // Type changed → destroy old, create new
-        if (oldVNode.Type != newVNode.Type)
+        // Type changed (or different component) → destroy old, create new
+        bool typeChanged = oldVNode.Type != newVNode.Type;
+        bool componentChanged = oldVNode.Type == "__component" && newVNode.Type == "__component"
+                                && oldVNode.ComponentId != newVNode.ComponentId;
+        if (typeChanged || componentChanged)
         {
             existingNode.Parent = null;
             DestroyNodeWithoutRemove(existingNode);
@@ -507,9 +517,14 @@ public static class Reconciler
         // Same type → update in place
         UpdateNode(existingNode, newVNode);
 
-        var oldCh = oldVNode.Children ?? Array.Empty<VNode>();
-        var newCh = newVNode.Children ?? Array.Empty<VNode>();
-        DiffChildren(existingNode, oldCh, newCh);
+        // Component nodes manage their own children via ReRenderComponent (called from UpdateNode).
+        // Don't DiffChildren here — VNode.Children is null for components.
+        if (newVNode.Type != "__component")
+        {
+            var oldCh = oldVNode.Children ?? Array.Empty<VNode>();
+            var newCh = newVNode.Children ?? Array.Empty<VNode>();
+            DiffChildren(existingNode, oldCh, newCh);
+        }
 
         return existingNode;
     }

@@ -397,12 +397,14 @@ public class RenderPipeline
         guiStyle.wordWrap = true;
         guiStyle.clipping = TextClipping.Clip;
 
-        // Use height=0 trick: let Unity compute height if our layout gave 0
-        float h = cmd.Rect.Height > 0 ? cmd.Rect.Height : guiStyle.CalcHeight(
-            new GUIContent(cmd.Text), cmd.Rect.Width);
+        // Use actual measured size so text never clips due to layout width estimates
+        var content = new GUIContent(cmd.Text);
+        var measured = guiStyle.CalcSize(content);
+        float w = System.Math.Max(cmd.Rect.Width, measured.x);
+        float h = cmd.Rect.Height > 0 ? cmd.Rect.Height : measured.y;
 
         GUI.Label(
-            new UnityEngine.Rect(cmd.Rect.X, cmd.Rect.Y, cmd.Rect.Width, h),
+            new UnityEngine.Rect(cmd.Rect.X, cmd.Rect.Y, w, h),
             cmd.Text,
             guiStyle
         );

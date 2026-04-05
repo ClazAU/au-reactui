@@ -11,8 +11,52 @@ public static class InputSystem
     static Core.UINode? _hoveredNode;
     static Core.UINode? _activeNode;
 
+    // Drag state
+    static bool _isDragging;
+    static float _dragOffsetX, _dragOffsetY;
+    static Action<float>? _dragSetX, _dragSetY;
+
+    // Registered draggable panels: componentId → callbacks
+    static readonly System.Collections.Generic.Dictionary<int, DragTarget> _dragTargets = new();
+
+    public struct DragTarget
+    {
+        public Func<float> GetX, GetY;
+        public Action<float> SetX, SetY;
+    }
+
+    /// <summary>
+    /// Register a component as draggable. Call during render.
+    /// </summary>
+    public static void RegisterDraggable(int componentId, Func<float> getX, Func<float> getY, Action<float> setX, Action<float> setY)
+    {
+        _dragTargets[componentId] = new DragTarget { GetX = getX, GetY = getY, SetX = setX, SetY = setY };
+    }
+
     public static Core.UINode? HoveredNode => _hoveredNode;
     public static Core.UINode? FocusedNode => FocusManager.Focused;
+
+    /// <summary>
+    /// True when the mouse is over a ReactUI element or dragging. Other mods can check this
+    /// to skip their own input processing (e.g. player movement, interactions).
+    /// </summary>
+    public static bool BlockGameInput => _hoveredNode != null || _isDragging;
+
+    /// <summary>
+    /// Start dragging. Call from an onMouseDown handler.
+    /// Provide the current position and state setters — InputSystem will update them every frame.
+    /// </summary>
+    public static void StartDrag(float currentX, float currentY, Action<float> setX, Action<float> setY)
+    {
+        float mx = UnityEngine.Input.mousePosition.x;
+        float my = UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y;
+        _dragOffsetX = mx - currentX;
+        _dragOffsetY = my - currentY;
+        _dragSetX = setX;
+        _dragSetY = setY;
+        _isDragging = true;
+        Plugin.ReactUIPlugin.Logger.LogInfo($"[ReactUI] StartDrag pos=({currentX},{currentY}) mouse=({mx},{my}) offset=({_dragOffsetX},{_dragOffsetY})");
+    }
 
     public static void ProcessInput(Core.UINode? root)
     {
@@ -24,6 +68,11 @@ public static class InputSystem
         float my = UnityEngine.Screen.height - mousePos.y;
 
         var hit = HitTesting.HitTest(root, mx, my);
+
+        // Log hit testing periodically for diagnostics
+        if (UnityEngine.Input.GetMouseButtonDown(0))
+            Plugin.ReactUIPlugin.Logger.LogInfo($"[ReactUI] HitTest at ({mx},{my}) = {(hit != null ? hit.Type + " rect=" + hit.ScreenRect : "null")}");
+
 
         // Handle hover transitions
         if (hit != _hoveredNode)
@@ -49,6 +98,32 @@ public static class InputSystem
             {
                 hit.IsActive = true;
                 FireEvent(hit, "onMouseDown");
+
+                // Check if we should start dragging: walk up from hit to find a registered draggable.
+                // Skip if the hit node has an onClick handler (button/interactive element).
+                if (!_isDragging)
+                {
+                    bool hasClickHandler = HasEventHandler(hit, "onClick");
+                    if (!hasClickHandler)
+                    {
+                        var ancestor = hit;
+                        while (ancestor != null)
+                        {
+                            if (ancestor.Type == "__component" && _dragTargets.TryGetValue(ancestor.ComponentId, out var target))
+                            {
+                                float curX = target.GetX();
+                                float curY = target.GetY();
+                                _dragOffsetX = mx - curX;
+                                _dragOffsetY = my - curY;
+                                _dragSetX = target.SetX;
+                                _dragSetY = target.SetY;
+                                _isDragging = true;
+                                break;
+                            }
+                            ancestor = ancestor.Parent;
+                        }
+                    }
+                }
             }
             // Focus management
             FocusManager.SetFocus(hit);
@@ -61,10 +136,22 @@ public static class InputSystem
             {
                 _activeNode.IsActive = false;
                 FireEvent(_activeNode, "onMouseUp");
-                if (_activeNode == hit)
+                if (_activeNode == hit && !_isDragging)
                     FireEvent(_activeNode, "onClick");
                 _activeNode = null;
             }
+            _isDragging = false;
+            _dragSetX = null;
+            _dragSetY = null;
+        }
+
+        // Drag tracking — runs every frame while dragging
+        if (_isDragging && _dragSetX != null && _dragSetY != null)
+        {
+            float newX = mx - _dragOffsetX;
+            float newY = my - _dragOffsetY;
+            _dragSetX(newX);
+            _dragSetY(newY);
         }
 
         // Scroll
@@ -93,6 +180,19 @@ public static class InputSystem
         CursorManager.Update(_hoveredNode);
     }
 
+    static bool HasEventHandler(Core.UINode node, string eventName)
+    {
+        var current = node;
+        while (current != null)
+        {
+            var vnode = current.LastVNode;
+            if (vnode != null && vnode.Props.TryGetValue(eventName, out var handler) && handler is Action)
+                return true;
+            current = current.Parent;
+        }
+        return false;
+    }
+
     static Core.UINode? FindScrollableAncestor(Core.UINode node)
     {
         var current = node;
@@ -107,17 +207,28 @@ public static class InputSystem
 
     static void FireEvent(Core.UINode node, string eventName)
     {
-        // Check the committed node's last VNode props for the event handler
-        var vnode = node.LastVNode;
-        if (vnode == null) return;
-
-        if (vnode.Props.TryGetValue(eventName, out var handler))
+        // Bubble up through ancestors until a handler is found (like DOM event bubbling)
+        var current = node;
+        while (current != null)
         {
-            if (handler is Action action)
+            var vnode = current.LastVNode;
+            if (vnode != null && vnode.Props.TryGetValue(eventName, out var handler))
             {
-                try { action(); }
-                catch (System.Exception) { /* swallow event handler errors */ }
+                if (handler is Action action)
+                {
+                    try { action(); }
+                    catch (System.Exception ex)
+                    {
+                        Plugin.ReactUIPlugin.Logger.LogError($"[ReactUI] Event '{eventName}' handler threw: {ex}");
+                    }
+                    return; // handled — stop bubbling
+                }
+                else
+                {
+                    Plugin.ReactUIPlugin.Logger.LogWarning($"[ReactUI] Found '{eventName}' on {current.Type} but handler type is {handler?.GetType()?.Name ?? "null"}, not Action");
+                }
             }
+            current = current.Parent;
         }
     }
 

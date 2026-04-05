@@ -478,4 +478,207 @@ public class LayoutTests
         AssertApprox(100, child.ScreenRect.Width, "Child ScreenRect.Width");
         AssertApprox(100, child.ScreenRect.Height, "Child ScreenRect.Height");
     }
+
+    // 26. __component wrapper is transparent in layout
+    [Fact]
+    public void ComponentWrapper_IsLayoutTransparent()
+    {
+        // Simulate: __component root wrapping an absolute-positioned panel
+        var component = new ReactUI.Core.UINode("__component")
+        {
+            ComputedStyle = new ReactUI.Style.Style()
+        };
+        var panel = new ReactUI.Core.UINode("div")
+        {
+            Parent = component,
+            ComputedStyle = new ReactUI.Style.Style
+            {
+                Position = ReactUI.Style.PositionType.Absolute,
+                Inset = new ReactUI.Style.EdgeValues(40, float.NaN, float.NaN, 40),
+                Width = ReactUI.Style.StyleValue.Px(420),
+                Height = ReactUI.Style.StyleValue.Px(300),
+            }
+        };
+        component.Children.Add(panel);
+
+        LayoutEngine.ComputeLayout(component, 1920, 1080);
+
+        // Panel should be at (40, 40) with its explicit size
+        AssertApprox(40, panel.ScreenRect.X, "Panel X");
+        AssertApprox(40, panel.ScreenRect.Y, "Panel Y");
+        AssertApprox(420, panel.ScreenRect.Width, "Panel Width");
+        AssertApprox(300, panel.ScreenRect.Height, "Panel Height");
+    }
+
+    // 27. Auto-height absolute panel sizes to content
+    [Fact]
+    public void AbsolutePanel_AutoHeight_SizesToContent()
+    {
+        var component = new ReactUI.Core.UINode("__component")
+        {
+            ComputedStyle = new ReactUI.Style.Style()
+        };
+        var panel = new ReactUI.Core.UINode("div")
+        {
+            Parent = component,
+            ComputedStyle = new ReactUI.Style.Style
+            {
+                Position = ReactUI.Style.PositionType.Absolute,
+                Inset = new ReactUI.Style.EdgeValues(40, float.NaN, float.NaN, 40),
+                Width = ReactUI.Style.StyleValue.Px(420),
+                // No Height — should auto-size to content
+                Padding = new ReactUI.Style.EdgeValues(10),
+            }
+        };
+        component.Children.Add(panel);
+
+        // Add two children: 50px and 80px tall with 12px gap
+        var child1 = new ReactUI.Core.UINode("div")
+        {
+            Parent = panel,
+            ComputedStyle = new ReactUI.Style.Style
+            {
+                Height = ReactUI.Style.StyleValue.Px(50),
+            }
+        };
+        var child2 = new ReactUI.Core.UINode("div")
+        {
+            Parent = panel,
+            ComputedStyle = new ReactUI.Style.Style
+            {
+                Height = ReactUI.Style.StyleValue.Px(80),
+                Gap = 12,
+            }
+        };
+        panel.Children.Add(child1);
+        panel.Children.Add(child2);
+        panel.ComputedStyle.Gap = 12;
+
+        LayoutEngine.ComputeLayout(component, 1920, 1080);
+
+        // Panel height = padding(10) + child1(50) + gap(12) + child2(80) + padding(10) = 162
+        AssertApprox(162, panel.ScreenRect.Height, "Panel auto height");
+        AssertApprox(420, panel.ScreenRect.Width, "Panel width");
+        AssertApprox(40, panel.ScreenRect.X, "Panel X");
+        AssertApprox(40, panel.ScreenRect.Y, "Panel Y");
+    }
+
+    // 28. Nested __component wrappers are all transparent
+    [Fact]
+    public void NestedComponents_AllTransparent()
+    {
+        // Root __component → panel div → inner __component → content div
+        var rootComp = new ReactUI.Core.UINode("__component")
+        {
+            ComputedStyle = new ReactUI.Style.Style()
+        };
+        var panel = new ReactUI.Core.UINode("div")
+        {
+            Parent = rootComp,
+            ComputedStyle = new ReactUI.Style.Style
+            {
+                Width = ReactUI.Style.StyleValue.Px(400),
+                Height = ReactUI.Style.StyleValue.Px(300),
+                Padding = new ReactUI.Style.EdgeValues(10),
+            }
+        };
+        rootComp.Children.Add(panel);
+
+        var innerComp = new ReactUI.Core.UINode("__component")
+        {
+            Parent = panel,
+            ComputedStyle = new ReactUI.Style.Style()
+        };
+        panel.Children.Add(innerComp);
+
+        var content = new ReactUI.Core.UINode("div")
+        {
+            Parent = innerComp,
+            ComputedStyle = new ReactUI.Style.Style
+            {
+                Height = ReactUI.Style.StyleValue.Px(100),
+            }
+        };
+        innerComp.Children.Add(content);
+
+        LayoutEngine.ComputeLayout(rootComp, 1920, 1080);
+
+        // Content should be at panel position + padding, stretched to panel width - padding
+        AssertApprox(10, content.ScreenRect.X, "Content X");
+        AssertApprox(10, content.ScreenRect.Y, "Content Y");
+        AssertApprox(380, content.ScreenRect.Width, "Content Width (stretched)");
+        AssertApprox(100, content.ScreenRect.Height, "Content Height");
+
+        // Inner component wrapper should have same rect as its content
+        AssertApprox(content.ScreenRect.X, innerComp.ScreenRect.X, "InnerComp X matches content");
+        AssertApprox(content.ScreenRect.Y, innerComp.ScreenRect.Y, "InnerComp Y matches content");
+    }
+
+    // 29. Button with text child has correct height from measure func
+    [Fact]
+    public void ButtonWithText_HasCorrectHeight()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row,
+            Width = 400,
+            Gap = 8,
+        };
+
+        // Simulate a button: auto-sized with padding, containing a measured text leaf
+        var button = new LayoutNode
+        {
+            PaddingTop = 6, PaddingBottom = 6,
+            PaddingLeft = 14, PaddingRight = 14,
+        };
+        var textLeaf = new LayoutNode
+        {
+            MeasureFunc = (w, wm, h, hm) =>
+            {
+                float fontSize = 13f;
+                float charWidth = fontSize * 0.5f;
+                string text = "Click";
+                float textWidth = text.Length * charWidth;
+                float availW = wm == MeasureMode.Undefined ? float.MaxValue : w;
+                float fitWidth = System.Math.Min(textWidth, availW);
+                int lines = fitWidth > 0 ? (int)System.Math.Ceiling(textWidth / fitWidth) : 1;
+                float fitHeight = lines * fontSize * 1.4f;
+                return (fitWidth, fitHeight);
+            }
+        };
+        button.AddChild(textLeaf);
+        root.AddChild(button);
+
+        // Use Undefined mode so the row auto-sizes (mimics being inside a column parent)
+        CalculateUndefined(root);
+
+        // Text: "Click" = 5 chars * 6.5 = 32.5 wide, 13*1.4 = 18.2 tall
+        // Button: 32.5 + 28 = 60.5 wide, 18.2 + 12 = 30.2 tall
+        AssertApprox(60.5f, button.ComputedWidth, "Button Width");
+        AssertApprox(30.2f, button.ComputedHeight, "Button Height");
+        Assert.True(textLeaf.ComputedHeight > 0, "Text height should not be zero");
+    }
+
+    // 30. Column auto-height with multiple auto-height children
+    [Fact]
+    public void ColumnAutoHeight_MultipleAutoChildren()
+    {
+        var root = new LayoutNode { Width = 300, Gap = 10 };
+
+        // Child 1: auto-height with text leaf
+        var child1 = new LayoutNode { PaddingTop = 16, PaddingBottom = 16, PaddingLeft = 16, PaddingRight = 16 };
+        child1.AddChild(new LayoutNode
+        {
+            MeasureFunc = (w, wm, h, hm) => (100, 30)
+        });
+        root.AddChild(child1);
+
+        // Child 2: fixed height
+        root.AddChild(new LayoutNode { Height = 50 });
+
+        CalculateUndefined(root);
+
+        // Root height = child1(30 + 32 padding = 62) + gap(10) + child2(50) = 122
+        AssertApprox(122, root.ComputedHeight, "Root auto height");
+    }
 }
