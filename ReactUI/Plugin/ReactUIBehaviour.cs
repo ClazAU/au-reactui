@@ -11,7 +11,7 @@ public class ReactUIBehaviour : MonoBehaviour
     Rendering.RenderPipeline? _renderPipeline;
     int _frameCount;
     bool _initDone;
-    bool _showTextTests;
+
 
     public static ReactUIBehaviour? Instance => _instance;
 
@@ -46,13 +46,6 @@ public class ReactUIBehaviour : MonoBehaviour
             // Poll all registered key toggles (F8, F9, etc.)
             Input.KeyToggle.Poll();
 
-            // F10 toggles text rendering tests overlay
-            if (UnityEngine.Input.GetKeyDown(KeyCode.F10))
-            {
-                _showTextTests = !_showTextTests;
-                if (!_showTextTests) Rendering.TextRendererTests.Reset();
-                ReactUIPlugin.Logger.LogInfo($"[ReactUI] Text tests overlay: {_showTextTests}");
-            }
 
             // F11 toggles layout debug overlay
             if (UnityEngine.Input.GetKeyDown(KeyCode.F11))
@@ -123,9 +116,6 @@ public class ReactUIBehaviour : MonoBehaviour
                 _renderPipeline.Execute();
             }
 
-            // Text rendering tests overlay (F10 to toggle)
-            if (_showTextTests)
-                Rendering.TextRendererTests.RunAll(Screen.height - 200);
 
             // Layout debug overlay (F11 to toggle)
             if (Rendering.LayoutDebugOverlay.Enabled)
