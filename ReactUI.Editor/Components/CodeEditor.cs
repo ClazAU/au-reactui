@@ -13,15 +13,15 @@ namespace ReactUI.Editor.Components;
 /// </summary>
 public static class CodeEditor
 {
-    private static readonly Func<(string[] lines, Action<string[]> onChange), Core.VNode> Render_ =
-        Component<(string[] lines, Action<string[]> onChange)>(RenderInternal);
+    private static readonly Func<(string[] lines, Action<string[]> onChange, SyntaxHighlighter.Language lang), Core.VNode> Render_ =
+        Component<(string[] lines, Action<string[]> onChange, SyntaxHighlighter.Language lang)>(RenderInternal);
 
-    public static Core.VNode Render(string[] lines, Action<string[]> onChange) =>
-        Render_((lines, onChange));
+    public static Core.VNode Render(string[] lines, Action<string[]> onChange, SyntaxHighlighter.Language lang = SyntaxHighlighter.Language.Jsx) =>
+        Render_((lines, onChange, lang));
 
-    private static Core.VNode RenderInternal((string[] lines, Action<string[]> onChange) props)
+    private static Core.VNode RenderInternal((string[] lines, Action<string[]> onChange, SyntaxHighlighter.Language lang) props)
     {
-        var (lines, onChange) = props;
+        var (lines, onChange, lang) = props;
         var (focusedLine, setFocusedLine) = UseState(0);
 
         if (focusedLine >= lines.Length) focusedLine = lines.Length - 1;
@@ -85,7 +85,7 @@ public static class CodeEditor
             var lineNumStyle = ClassName("line-number");
 
             // Build syntax-highlighted text spans
-            var tokens = SyntaxHighlighter.Tokenize(lineText);
+            var tokens = SyntaxHighlighter.Tokenize(lineText, lang);
             var highlightedSpans = new List<Core.VNode>();
             foreach (var token in tokens)
             {

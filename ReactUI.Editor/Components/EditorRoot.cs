@@ -93,7 +93,7 @@ public static class EditorRoot
                 // Editor area
                 Div(ClassName("editor-area"),
                     // Code editor
-                    CodeEditor.Render(lines, onCodeChange),
+                    CodeEditor.Render(lines, onCodeChange, SyntaxHighlighter.DetectLanguage(openFile)),
 
                     // Error panel
                     error != null
