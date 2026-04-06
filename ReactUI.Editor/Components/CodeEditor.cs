@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using static ReactUI.UI;
@@ -7,8 +8,8 @@ using S = ReactUI.Style.Style;
 namespace ReactUI.Editor.Components;
 
 /// <summary>
-/// Multi-line code editor built from stacked single-line Inputs.
-/// Supports Enter (new line), Backspace-at-start (merge lines), Arrow Up/Down (navigate).
+/// Multi-line code editor with syntax highlighting.
+/// Each line: [line number] [highlighted overlay + transparent input]
 /// </summary>
 public static class CodeEditor
 {
@@ -23,11 +24,8 @@ public static class CodeEditor
         var (lines, onChange) = props;
         var (focusedLine, setFocusedLine) = UseState(0);
 
-        // Clamp focused line to valid range
-        if (focusedLine >= lines.Length)
-            focusedLine = lines.Length - 1;
-        if (focusedLine < 0)
-            focusedLine = 0;
+        if (focusedLine >= lines.Length) focusedLine = lines.Length - 1;
+        if (focusedLine < 0) focusedLine = 0;
 
         var children = new Core.VNode[lines.Length];
 
@@ -37,7 +35,6 @@ public static class CodeEditor
             var lineText = lines[i];
             var isFocused = i == focusedLine;
 
-            // Line change handler
             Action<string> onLineChange = (newText) =>
             {
                 var newLines = (string[])lines.Clone();
@@ -45,7 +42,6 @@ public static class CodeEditor
                 onChange(newLines);
             };
 
-            // Key handler for Enter, Backspace-at-start, ArrowUp/Down
             Action<KeyCode> onKeyDown = (kc) =>
             {
                 switch (kc)
@@ -53,7 +49,6 @@ public static class CodeEditor
                     case KeyCode.Return:
                     case KeyCode.KeypadEnter:
                     {
-                        // Insert new line below
                         var newLines = new string[lines.Length + 1];
                         for (int j = 0; j <= lineIdx; j++)
                             newLines[j] = lines[j];
@@ -62,14 +57,12 @@ public static class CodeEditor
                             newLines[j + 1] = lines[j];
                         onChange(newLines);
                         setFocusedLine(lineIdx + 1);
-                        // Focus the new input
                         global::ReactUI.Input.FocusManager.SetFocusByKey($"editor-line-{lineIdx + 1}");
                         break;
                     }
 
                     case KeyCode.Backspace when lineText.Length == 0 && lineIdx > 0:
                     {
-                        // Merge empty line with previous
                         var newLines = lines.Where((_, idx) => idx != lineIdx).ToArray();
                         onChange(newLines);
                         setFocusedLine(lineIdx - 1);
@@ -89,21 +82,62 @@ public static class CodeEditor
                 }
             };
 
-            // Build the line
             var lineNumStyle = ClassName("line-number");
-            var inputStyle = isFocused
-                ? ClassName("line-input").Merge(ClassName("line-input-focused"))
-                : ClassName("line-input");
+
+            // Build syntax-highlighted text spans
+            var tokens = SyntaxHighlighter.Tokenize(lineText);
+            var highlightedSpans = new List<Core.VNode>();
+            foreach (var token in tokens)
+            {
+                var color = SyntaxHighlighter.GetColor(token.Type);
+                highlightedSpans.Add(Text(token.Text, new S
+                {
+                    FontSize = 13,
+                    Color = color,
+                }));
+            }
+
+            // The highlighted overlay (positioned absolute over the input)
+            var overlay = Div(new S
+            {
+                Position = Style.PositionType.Absolute,
+                Inset = new Style.EdgeValues(0),
+                FlexDirection = Style.FlexDirection.Row,
+                AlignItems = Style.AlignItems.Center,
+                Padding = new Style.EdgeValues(2, 4),
+                PointerEvents = false, // clicks pass through to input below
+            }, highlightedSpans.ToArray());
+
+            // The actual input (transparent text — editing happens here)
+            var inputStyle = new S
+            {
+                FlexGrow = 1,
+                FontSize = 13,
+                Color = isFocused ? Style.UIColor.FromHex("#d4d4d4") : Style.UIColor.Transparent,
+                Background = isFocused ? Style.UIColor.FromHex("#ffffff08") : Style.UIColor.Transparent,
+                Padding = new Style.EdgeValues(2, 4),
+                BorderWidth = 0,
+            };
+
+            // Container for the input + overlay stack
+            var editArea = Div(new S
+            {
+                FlexGrow = 1,
+                Position = Style.PositionType.Relative,
+            },
+                UI.Input(lineText, onLineChange, inputStyle),
+                isFocused ? Div() : overlay  // Hide overlay when focused (show input caret instead)
+            );
+
+            // Attach onKeyDown to the input inside editArea
+            if (editArea.Children != null && editArea.Children.Length > 0)
+                editArea.Children[0].Props["onKeyDown"] = onKeyDown;
 
             var lineNode = Div(ClassName("code-line"),
                 Text((lineIdx + 1).ToString(), lineNumStyle),
-                UI.Input(lineText, onLineChange, inputStyle)
+                editArea
             );
             lineNode.Key = $"editor-line-{lineIdx}";
-
-            // Attach onKeyDown to the input
-            if (lineNode.Children != null && lineNode.Children.Length > 1)
-                lineNode.Children[1].Props["onKeyDown"] = onKeyDown;
 
             children[i] = lineNode;
         }
