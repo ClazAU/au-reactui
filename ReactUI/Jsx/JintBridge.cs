@@ -115,8 +115,9 @@ public class JintBridge
             options.LimitMemory(16_000_000);
         });
 
-        // Core React API
-        engine.SetValue("createElement", new Func<JsValue, JsValue, JsValue[], JsValue>(CreateElement));
+        // Core React API — use a JS wrapper to collect variadic children into an array
+        engine.SetValue("_ce", new Func<JsValue, JsValue, JsValue, JsValue>(CreateElementInternal));
+        engine.Execute("function createElement(type, props) { var children = []; for (var i = 2; i < arguments.length; i++) children.push(arguments[i]); return _ce(type, props, children); }");
         engine.SetValue("Fragment", "__fragment__");
 
         // Hooks
@@ -141,7 +142,7 @@ public class JintBridge
 
     // ─── createElement ────────────────────────
 
-    private JsValue CreateElement(JsValue type, JsValue props, JsValue[] children)
+    private JsValue CreateElementInternal(JsValue type, JsValue props, JsValue childrenArray)
     {
         string typeStr;
 
@@ -211,12 +212,14 @@ public class JintBridge
             }
         }
 
-        // Process children
+        // Process children from the collected array
         var childList = new List<VNode>();
-        if (children != null)
+        if (!childrenArray.IsNull() && !childrenArray.IsUndefined() && childrenArray.IsArray())
         {
-            foreach (var child in children)
-                FlattenChild(child, childList);
+            var arrObj = childrenArray.AsObject();
+            var length = (int)arrObj.Get("length").AsNumber();
+            for (int ci = 0; ci < length; ci++)
+                FlattenChild(arrObj.Get(ci.ToString()), childList);
         }
 
         if (childList.Count > 0)
