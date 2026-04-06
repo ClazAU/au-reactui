@@ -13,6 +13,9 @@ public class ReactUIBehaviour : MonoBehaviour
 
     public static ReactUIBehaviour? Instance => _instance;
 
+    /// <summary>Called every Update frame. Register callbacks for plugin-level per-frame logic.</summary>
+    public static event Action? OnUpdate;
+
     public ReactUIBehaviour(IntPtr ptr) : base(ptr) { }
 
     private void Awake()
@@ -39,6 +42,12 @@ public class ReactUIBehaviour : MonoBehaviour
 
             if (UnityEngine.Input.GetKeyDown(KeyCode.F11))
                 Rendering.LayoutDebugOverlay.Toggle();
+
+            // Tick JSX hot-reloader (drains file-change queue)
+            UI.TickJsx();
+
+            // Fire registered update callbacks (used by editor plugin, etc.)
+            OnUpdate?.Invoke();
 
             var roots = Core.Scheduler.GetRoots();
             Input.InputSystem.ProcessInputAll(roots);

@@ -5,14 +5,11 @@ using BepInEx.Unity.IL2CPP;
 using Reactor;
 using ReactUI.Core;
 using ReactUI.Editor.Components;
+using ReactUI.Plugin;
 using ReactUI.Style;
 
 namespace ReactUI.Editor;
 
-/// <summary>
-/// BepInEx plugin that provides an in-game JSX editor.
-/// Toggle with F10.
-/// </summary>
 [BepInAutoPlugin("com.reactui.editor", "ReactUI Editor")]
 [BepInProcess("Among Us.exe")]
 [BepInDependency(ReactorPlugin.Id)]
@@ -24,28 +21,23 @@ public partial class EditorPlugin : BasePlugin
 
     public override void Load()
     {
-        // Register the editor styles globally
         GlobalStyles.Register(EditorStyles.Sheet);
 
-        // Set the watch directory to a 'ui' folder next to this plugin DLL
         var pluginDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
         var uiDir = Path.Combine(pluginDir, "ui");
         if (!Directory.Exists(uiDir))
             Directory.CreateDirectory(uiDir);
 
         EditorRoot.SetWatchDirectory(uiDir);
-
-        // Also start watching for hot-reload
         UI.WatchJsx(uiDir);
+
+        // Register for per-frame updates via ReactUIBehaviour
+        ReactUIBehaviour.OnUpdate += OnUpdate;
 
         Log.LogInfo("ReactUI Editor loaded. Press F10 to toggle.");
     }
 
-    /// <summary>
-    /// Called from ReactUIBehaviour (or a Harmony patch) each frame.
-    /// Toggle editor visibility with F10.
-    /// </summary>
-    public void Update()
+    private void OnUpdate()
     {
         if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F10))
         {
