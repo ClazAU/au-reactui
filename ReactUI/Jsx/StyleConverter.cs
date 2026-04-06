@@ -187,14 +187,30 @@ public static class StyleConverter
         if (v is int i) return new EdgeValues(i);
 
         // Array → [vertical, horizontal] or [top, right, bottom, left]
-        if (v is IList<object?> list)
+        // Handle both IList<object?> and object[] (Jint returns object[])
+        IList<object?>? list = v as IList<object?>;
+        if (list == null && v is object[] arr)
+            list = arr;
+        if (list == null && v is System.Collections.IList rawList)
+        {
+            var converted = new List<object?>();
+            foreach (var item in rawList)
+                converted.Add(item);
+            list = converted;
+        }
+
+        if (list != null)
         {
             return list.Count switch
             {
-                1 => new EdgeValues(ToFloat(list[0]!)),
-                2 => new EdgeValues(ToFloat(list[0]!), ToFloat(list[1]!)),
-                3 => new EdgeValues(ToFloat(list[0]!), ToFloat(list[1]!), ToFloat(list[2]!), ToFloat(list[1]!)),
-                >= 4 => new EdgeValues(ToFloat(list[0]!), ToFloat(list[1]!), ToFloat(list[2]!), ToFloat(list[3]!)),
+                1 => new EdgeValues(ToFloatOrNaN(list[0])),
+                2 => new EdgeValues(ToFloatOrNaN(list[0]), ToFloatOrNaN(list[1])),
+                3 => new EdgeValues(
+                    StyleValue.Px(ToFloatOrNaN(list[0])), StyleValue.Px(ToFloatOrNaN(list[1])),
+                    StyleValue.Px(ToFloatOrNaN(list[2])), StyleValue.Px(ToFloatOrNaN(list[1]))),
+                >= 4 => new EdgeValues(
+                    StyleValue.Px(ToFloatOrNaN(list[0])), StyleValue.Px(ToFloatOrNaN(list[1])),
+                    StyleValue.Px(ToFloatOrNaN(list[2])), StyleValue.Px(ToFloatOrNaN(list[3]))),
                 _ => new EdgeValues(0)
             };
         }
@@ -215,6 +231,9 @@ public static class StyleConverter
 
         return new EdgeValues(0);
     }
+
+    /// <summary>Convert to float, treating null as NaN (undefined/not-set).</summary>
+    private static float ToFloatOrNaN(object? v) => v == null ? float.NaN : ToFloat(v);
 
     private static float ParseFloat(string s) =>
         float.TryParse(s, System.Globalization.NumberStyles.Float,
