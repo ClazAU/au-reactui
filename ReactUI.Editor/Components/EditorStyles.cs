@@ -69,6 +69,8 @@ public static class EditorStyles
         {
             FlexDirection = FlexDirection.Row,
             FlexGrow = 1,
+            FlexShrink = 1,
+            FlexBasis = StyleValue.Px(0),
             Overflow = Overflow.Hidden,
         },
 
@@ -112,6 +114,8 @@ public static class EditorStyles
         [".editor-area"] = new S
         {
             FlexGrow = 1,
+            FlexShrink = 1,
+            FlexBasis = StyleValue.Px(0),
             FlexDirection = FlexDirection.Column,
             Overflow = Overflow.Hidden,
         },
@@ -119,6 +123,8 @@ public static class EditorStyles
         [".code-scroll"] = new S
         {
             FlexGrow = 1,
+            FlexShrink = 1,
+            FlexBasis = StyleValue.Px(0),
             Overflow = Overflow.Scroll,
             Background = UIColor.FromHex("#0d0d14"),
             Padding = new EdgeValues(4, 0),
