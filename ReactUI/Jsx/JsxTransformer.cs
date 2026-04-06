@@ -360,7 +360,9 @@ public static class JsxTransformer
     private static string ReadJsExpression(TransformContext ctx)
     {
         var expr = new StringBuilder();
-        int depth = 0;
+        int braceDepth = 0;
+        int parenDepth = 0;
+        int bracketDepth = 0;
 
         while (!ctx.AtEnd)
         {
@@ -369,7 +371,7 @@ public static class JsxTransformer
             // Nested braces
             if (c == '{')
             {
-                depth++;
+                braceDepth++;
                 expr.Append(c);
                 ctx.Pos++;
                 continue;
@@ -377,9 +379,9 @@ public static class JsxTransformer
 
             if (c == '}')
             {
-                if (depth == 0)
+                if (braceDepth == 0 && parenDepth == 0 && bracketDepth == 0)
                     break; // end of expression
-                depth--;
+                braceDepth--;
                 expr.Append(c);
                 ctx.Pos++;
                 continue;
@@ -388,30 +390,17 @@ public static class JsxTransformer
             // String literals
             if (c == '\'' || c == '"' || c == '`')
             {
-                int before = expr.Length;
-                var tempOutput = ctx.Output;
-                ctx.Output.Clear(); // temporarily hijack — actually we shouldn't do this
-                // Instead, read the string manually
                 expr.Append(ReadStringLiteralRaw(ctx));
                 continue;
             }
 
-            // Parens / brackets (track depth so we don't break on } inside them)
-            if (c == '(' || c == '[')
-            {
-                depth++;
-                expr.Append(c);
-                ctx.Pos++;
-                continue;
-            }
+            // Parens
+            if (c == '(') { parenDepth++; expr.Append(c); ctx.Pos++; continue; }
+            if (c == ')') { parenDepth--; expr.Append(c); ctx.Pos++; continue; }
 
-            if (c == ')' || c == ']')
-            {
-                depth--;
-                expr.Append(c);
-                ctx.Pos++;
-                continue;
-            }
+            // Brackets
+            if (c == '[') { bracketDepth++; expr.Append(c); ctx.Pos++; continue; }
+            if (c == ']') { bracketDepth--; expr.Append(c); ctx.Pos++; continue; }
 
             // JSX inside expression: {condition && <div>yes</div>}
             if (c == '<' && IsJsxStart(ctx))
