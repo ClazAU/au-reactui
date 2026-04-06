@@ -681,4 +681,564 @@ public class LayoutTests
         // Root height = child1(30 + 32 padding = 62) + gap(10) + child2(50) = 122
         AssertApprox(122, root.ComputedHeight, "Root auto height");
     }
+
+    // ══════════════════════════════════════════════
+    //  Additional layout tests
+    // ══════════════════════════════════════════════
+
+    // 31. JustifyContent.SpaceAround distributes space around items
+    [Fact]
+    public void JustifyContent_SpaceAround()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Width = 300, Height = 100,
+            JustifyContent = JustifyContent.SpaceAround
+        };
+        root.AddChild(new LayoutNode { Width = 50, Height = 50 });
+        root.AddChild(new LayoutNode { Width = 50, Height = 50 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        float rootX = root.ComputedX;
+        // Free space = 300 - 100 = 200. Each item gets 200/2 = 100 around it.
+        // Leading = 50, between = 100
+        AssertApprox(50, root.Children[0].ComputedX - rootX, "Child0 X");
+        AssertApprox(200, root.Children[1].ComputedX - rootX, "Child1 X");
+    }
+
+    // 32. JustifyContent.SpaceEvenly distributes space evenly
+    [Fact]
+    public void JustifyContent_SpaceEvenly()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Width = 300, Height = 100,
+            JustifyContent = JustifyContent.SpaceEvenly
+        };
+        root.AddChild(new LayoutNode { Width = 50, Height = 50 });
+        root.AddChild(new LayoutNode { Width = 50, Height = 50 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        float rootX = root.ComputedX;
+        // Free space = 300 - 100 = 200. Slots = 3, each = 200/3 ≈ 66.67
+        float each = 200f / 3f;
+        AssertApprox(each, root.Children[0].ComputedX - rootX, "Child0 X");
+        AssertApprox(each + 50 + each, root.Children[1].ComputedX - rootX, "Child1 X");
+    }
+
+    // 33. AlignItems.FlexStart positions at start of cross axis
+    [Fact]
+    public void AlignItems_FlexStart()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Width = 300, Height = 200,
+            AlignItems = AlignItems.FlexStart
+        };
+        root.AddChild(new LayoutNode { Width = 100, Height = 50 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        AssertApprox(0, root.Children[0].ComputedY - root.ComputedY, "Child Y");
+    }
+
+    // 34. AlignItems.FlexEnd positions at end of cross axis
+    [Fact]
+    public void AlignItems_FlexEnd()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Width = 300, Height = 200,
+            AlignItems = AlignItems.FlexEnd
+        };
+        root.AddChild(new LayoutNode { Width = 100, Height = 50 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        AssertApprox(150, root.Children[0].ComputedY - root.ComputedY, "Child Y");
+    }
+
+    // 35. AlignSelf overrides parent AlignItems
+    [Fact]
+    public void AlignSelf_OverridesParent()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Width = 300, Height = 200,
+            AlignItems = AlignItems.FlexStart
+        };
+        root.AddChild(new LayoutNode { Width = 100, Height = 50, AlignSelf = AlignSelf.Center });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        AssertApprox(75, root.Children[0].ComputedY - root.ComputedY, "Child Y");
+    }
+
+    // 36. AlignSelf.Stretch stretches child on cross axis
+    [Fact]
+    public void AlignSelf_Stretch()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Width = 300, Height = 200,
+            AlignItems = AlignItems.FlexStart
+        };
+        root.AddChild(new LayoutNode { Width = 100, AlignSelf = AlignSelf.Stretch });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        AssertApprox(200, root.Children[0].ComputedHeight, "Child Height");
+    }
+
+    // 37. RowReverse reverses child order
+    // CSS: .parent { display:flex; flex-direction:row-reverse; width:300px }
+    //      .child { width:50px }
+    // Browser: first child at right edge (X=250), last child at left (X=0)
+    [Fact]
+    public void RowReverse_ReversesOrder()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.RowReverse, Width = 300, Height = 100
+        };
+        root.AddChild(new LayoutNode { Width = 50 });
+        root.AddChild(new LayoutNode { Width = 50 });
+        root.AddChild(new LayoutNode { Width = 50 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        float rootX = root.ComputedX;
+        // row-reverse: items pack from the right edge
+        AssertApprox(250, root.Children[0].ComputedX - rootX, "Child0 X (rightmost)");
+        AssertApprox(200, root.Children[1].ComputedX - rootX, "Child1 X (middle)");
+        AssertApprox(150, root.Children[2].ComputedX - rootX, "Child2 X (leftmost)");
+    }
+
+    // 38. ColumnReverse reverses vertical order
+    // CSS: .parent { display:flex; flex-direction:column-reverse; height:200px }
+    //      .child { height:30px }
+    // Browser: first child at bottom edge (Y=170), second child above (Y=140)
+    [Fact]
+    public void ColumnReverse_ReversesOrder()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.ColumnReverse, Width = 200, Height = 200
+        };
+        root.AddChild(new LayoutNode { Height = 30 });
+        root.AddChild(new LayoutNode { Height = 30 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        float rootY = root.ComputedY;
+        // column-reverse: items pack from the bottom edge
+        AssertApprox(170, root.Children[0].ComputedY - rootY, "Child0 Y (bottommost)");
+        AssertApprox(140, root.Children[1].ComputedY - rootY, "Child1 Y (above)");
+    }
+
+    // 39. Aspect ratio: width set, height derived
+    // CSS: .box { width:200px; aspect-ratio:2 } → height = 200/2 = 100px
+    // Browser: aspect-ratio works on any element, in-flow or absolute
+    [Fact]
+    public void AspectRatio_HeightFromWidth()
+    {
+        var root = new LayoutNode { Width = 200, AspectRatio = 2f };
+        YogaLayout.Calculate(root, 800, 600);
+
+        AssertApprox(200, root.ComputedWidth, "Width");
+        AssertApprox(100, root.ComputedHeight, "Height (200/2)");
+    }
+
+    // 40. Aspect ratio: height set, width derived
+    [Fact]
+    public void AspectRatio_WidthFromHeight()
+    {
+        var root = new LayoutNode { Height = 100, AspectRatio = 2f };
+
+        CalculateUndefined(root);
+
+        AssertApprox(200, root.ComputedWidth, "Width (100*2)");
+        AssertApprox(100, root.ComputedHeight, "Height");
+    }
+
+    // 41. Gap in row layout
+    [Fact]
+    public void Gap_SpacesChildrenInRow()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Width = 400, Height = 100, Gap = 20
+        };
+        root.AddChild(new LayoutNode { Width = 50, Height = 50 });
+        root.AddChild(new LayoutNode { Width = 50, Height = 50 });
+        root.AddChild(new LayoutNode { Width = 50, Height = 50 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        float rootX = root.ComputedX;
+        AssertApprox(0, root.Children[0].ComputedX - rootX, "Child0 X");
+        AssertApprox(70, root.Children[1].ComputedX - rootX, "Child1 X"); // 50 + 20
+        AssertApprox(140, root.Children[2].ComputedX - rootX, "Child2 X"); // 120 + 20
+    }
+
+    // 42. Absolute position with bottom/right
+    [Fact]
+    public void PositionAbsolute_BottomRight()
+    {
+        var root = new LayoutNode { Width = 300, Height = 300 };
+        root.AddChild(new LayoutNode
+        {
+            Position = PositionType.Absolute,
+            PositionBottom = 10, PositionRight = 20,
+            Width = 50, Height = 50
+        });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        float rootX = root.ComputedX;
+        float rootY = root.ComputedY;
+        AssertApprox(rootX + 230, root.Children[0].ComputedX, "Child X"); // 300 - 20 - 50
+        AssertApprox(rootY + 240, root.Children[0].ComputedY, "Child Y"); // 300 - 10 - 50
+    }
+
+    // 43. Absolute position with left+right stretches width
+    [Fact]
+    public void PositionAbsolute_LeftAndRight_StretchesWidth()
+    {
+        var root = new LayoutNode { Width = 300, Height = 300 };
+        root.AddChild(new LayoutNode
+        {
+            Position = PositionType.Absolute,
+            PositionLeft = 20, PositionRight = 30,
+            Height = 50
+        });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        AssertApprox(250, root.Children[0].ComputedWidth, "Child Width"); // 300 - 20 - 30
+    }
+
+    // 44. Absolute position with top+bottom stretches height
+    [Fact]
+    public void PositionAbsolute_TopAndBottom_StretchesHeight()
+    {
+        var root = new LayoutNode { Width = 300, Height = 300 };
+        root.AddChild(new LayoutNode
+        {
+            Position = PositionType.Absolute,
+            PositionTop = 10, PositionBottom = 20,
+            Width = 50
+        });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        AssertApprox(270, root.Children[0].ComputedHeight, "Child Height"); // 300 - 10 - 20
+    }
+
+    // 45. Absolute child does not affect sibling positions
+    [Fact]
+    public void AbsoluteChild_DoesNotAffectSiblings()
+    {
+        var root = new LayoutNode { Width = 200, Height = 300 };
+        root.AddChild(new LayoutNode { Height = 30 });
+        root.AddChild(new LayoutNode
+        {
+            Position = PositionType.Absolute,
+            PositionTop = 0, PositionLeft = 0,
+            Width = 100, Height = 100
+        });
+        root.AddChild(new LayoutNode { Height = 30 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        float rootY = root.ComputedY;
+        // Third child should be at Y=30 (not 130), absolute child is out of flow
+        AssertApprox(0, root.Children[0].ComputedY - rootY, "Child0 Y");
+        AssertApprox(30, root.Children[2].ComputedY - rootY, "Child2 Y");
+    }
+
+    // 46. Flex-grow with basis
+    [Fact]
+    public void FlexGrow_WithFlexBasis()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Width = 300, Height = 100
+        };
+        root.AddChild(new LayoutNode { FlexBasis = 50, FlexGrow = 1 });
+        root.AddChild(new LayoutNode { FlexBasis = 50, FlexGrow = 1 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        // Remaining = 300 - 100 = 200, split evenly → each gets 100 extra
+        AssertApprox(150, root.Children[0].ComputedWidth, "Child0 Width");
+        AssertApprox(150, root.Children[1].ComputedWidth, "Child1 Width");
+    }
+
+    // 47. Flex-shrink with different ratios
+    [Fact]
+    public void FlexShrink_DifferentRatios()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Width = 200, Height = 50
+        };
+        root.AddChild(new LayoutNode { Width = 100, FlexShrink = 1 });
+        root.AddChild(new LayoutNode { Width = 200, FlexShrink = 2 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        // Overflow = 100. Shrink scaled: 1*100=100, 2*200=400 → total=500
+        // Child0: 100 - 100*(100/500) = 100 - 20 = 80
+        // Child1: 200 - 100*(400/500) = 200 - 80 = 120
+        AssertApprox(80, root.Children[0].ComputedWidth, "Child0 Width");
+        AssertApprox(120, root.Children[1].ComputedWidth, "Child1 Width");
+    }
+
+    // 48. Max height constrains child
+    [Fact]
+    public void MaxHeight_Constrains()
+    {
+        var root = new LayoutNode { Height = 500, MaxHeight = 200 };
+        YogaLayout.Calculate(root, 800, 600);
+        AssertApprox(200, root.ComputedHeight, "Height");
+    }
+
+    // 49. Min height constrains child
+    [Fact]
+    public void MinHeight_Constrains()
+    {
+        var root = new LayoutNode { Height = 20, MinHeight = 50 };
+        YogaLayout.Calculate(root, 800, 600);
+        AssertApprox(50, root.ComputedHeight, "Height");
+    }
+
+    // 50. Padding on all sides reduces content area
+    [Fact]
+    public void Padding_AllSides_ReducesContentArea()
+    {
+        var root = new LayoutNode
+        {
+            Width = 200, Height = 200,
+            PaddingTop = 10, PaddingRight = 20, PaddingBottom = 30, PaddingLeft = 40,
+            AlignItems = AlignItems.Stretch
+        };
+        root.AddChild(new LayoutNode { Height = 50 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        // Child should stretch to 200 - 40 - 20 = 140 wide
+        AssertApprox(140, root.Children[0].ComputedWidth, "Child Width");
+        // Child X offset by left padding
+        AssertApprox(40, root.Children[0].ComputedX - root.ComputedX, "Child X");
+        // Child Y offset by top padding
+        AssertApprox(10, root.Children[0].ComputedY - root.ComputedY, "Child Y");
+    }
+
+    // 51. Margin between siblings
+    [Fact]
+    public void Margin_BetweenSiblings()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Width = 400, Height = 100
+        };
+        root.AddChild(new LayoutNode { Width = 50, MarginRight = 20 });
+        root.AddChild(new LayoutNode { Width = 50, MarginLeft = 10 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        float rootX = root.ComputedX;
+        AssertApprox(0, root.Children[0].ComputedX - rootX, "Child0 X");
+        // Child1 at: 0 + 50 (width) + 20 (marginRight) + 10 (marginLeft) = 80
+        AssertApprox(80, root.Children[1].ComputedX - rootX, "Child1 X");
+    }
+
+    // 52. FlexWrap with gap between wrap lines
+    [Fact]
+    public void FlexWrap_WithGap_SpacesLines()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row,
+            FlexWrap = FlexWrap.Wrap,
+            Width = 200, Height = 300,
+            Gap = 10
+        };
+        for (int i = 0; i < 4; i++)
+            root.AddChild(new LayoutNode { Width = 90, Height = 40 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        float rootY = root.ComputedY;
+        // Line 1: children 0, 1 (90 + 10 + 90 = 190 < 200)
+        AssertApprox(0, root.Children[0].ComputedY - rootY, "Child0 Y");
+        AssertApprox(0, root.Children[1].ComputedY - rootY, "Child1 Y");
+        // Line 2: children 2, 3 (Y = 40 + 10 gap = 50)
+        AssertApprox(50, root.Children[2].ComputedY - rootY, "Child2 Y");
+        AssertApprox(50, root.Children[3].ComputedY - rootY, "Child3 Y");
+    }
+
+    // 53. Deeply nested layout computes correctly
+    [Fact]
+    public void DeeplyNested_ThreeLevels()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Column, Width = 400, Height = 400,
+            PaddingTop = 10, PaddingLeft = 10
+        };
+        var level1 = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Height = 100,
+            PaddingLeft = 5
+        };
+        var level2 = new LayoutNode { Width = 50, Height = 50 };
+        level1.AddChild(level2);
+        root.AddChild(level1);
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        // level2 X = root.X + 10 (root pad) + 5 (level1 pad)
+        float expectedX = root.ComputedX + 10 + 5;
+        float expectedY = root.ComputedY + 10;
+        AssertApprox(expectedX, level2.ComputedX, "Level2 X");
+        AssertApprox(expectedY, level2.ComputedY, "Level2 Y");
+    }
+
+    // 54. Flex-grow with three children, unequal ratios
+    [Fact]
+    public void FlexGrow_ThreeChildren_UnequalRatios()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Width = 600, Height = 100
+        };
+        root.AddChild(new LayoutNode { FlexGrow = 1 });
+        root.AddChild(new LayoutNode { FlexGrow = 2 });
+        root.AddChild(new LayoutNode { FlexGrow = 3 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        AssertApprox(100, root.Children[0].ComputedWidth, "Child0 Width"); // 600/6
+        AssertApprox(200, root.Children[1].ComputedWidth, "Child1 Width"); // 1200/6
+        AssertApprox(300, root.Children[2].ComputedWidth, "Child2 Width"); // 1800/6
+    }
+
+    // 55. No children - node with just padding has correct size
+    [Fact]
+    public void NoChildren_PaddingOnly_CorrectSize()
+    {
+        var root = new LayoutNode
+        {
+            PaddingTop = 10, PaddingRight = 20, PaddingBottom = 30, PaddingLeft = 40
+        };
+
+        CalculateUndefined(root);
+
+        AssertApprox(60, root.ComputedWidth, "Width (padL + padR)");
+        AssertApprox(40, root.ComputedHeight, "Height (padT + padB)");
+    }
+
+    // 56. Percent width on in-flow child
+    // CSS: .parent { width:400px } .child { width:50%; height:50px }
+    // Browser: child width = 200px (50% of parent)
+    [Fact]
+    public void PercentWidth_ResolvesAgainstParent()
+    {
+        var root = new LayoutNode { Width = 400, Height = 200 };
+        root.AddChild(new LayoutNode { WidthPercent = 50, Height = 50 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        AssertApprox(200, root.Children[0].ComputedWidth, "Child Width (50%)");
+    }
+
+    // 57. Percent height on in-flow child
+    // CSS: .parent { height:200px } .child { width:50px; height:50% }
+    // Browser: child height = 100px (50% of parent)
+    [Fact]
+    public void PercentHeight_ResolvesAgainstParent()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Width = 400, Height = 200
+        };
+        root.AddChild(new LayoutNode { Width = 50, HeightPercent = 50 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        AssertApprox(100, root.Children[0].ComputedHeight, "Child Height (50%)");
+    }
+
+    // 58. MarkDirty propagates to parent
+    [Fact]
+    public void MarkDirty_PropagatesToParent()
+    {
+        var root = new LayoutNode();
+        var child = new LayoutNode();
+        root.AddChild(child);
+
+        root.IsDirty = false;
+        child.IsDirty = false;
+
+        child.MarkDirty();
+
+        Assert.True(child.IsDirty);
+        Assert.True(root.IsDirty);
+    }
+
+    // 59. RemoveChild removes from tree
+    [Fact]
+    public void RemoveChild_RemovesFromTree()
+    {
+        var root = new LayoutNode();
+        var child = new LayoutNode();
+        root.AddChild(child);
+
+        Assert.Single(root.Children);
+        Assert.Same(root, child.Parent);
+
+        root.RemoveChild(child);
+
+        Assert.Empty(root.Children);
+        Assert.Null(child.Parent);
+    }
+
+    // 60. Column with JustifyContent.Center
+    [Fact]
+    public void Column_JustifyContent_Center()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Column, Width = 200, Height = 300,
+            JustifyContent = JustifyContent.Center
+        };
+        root.AddChild(new LayoutNode { Height = 50 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        // Centered: (300 - 50) / 2 = 125
+        AssertApprox(125, root.Children[0].ComputedY - root.ComputedY, "Child Y");
+    }
+
+    // 61. Flex grow with gap
+    [Fact]
+    public void FlexGrow_WithGap_DistributesCorrectly()
+    {
+        var root = new LayoutNode
+        {
+            FlexDirection = FlexDirection.Row, Width = 320, Height = 100, Gap = 20
+        };
+        root.AddChild(new LayoutNode { FlexGrow = 1 });
+        root.AddChild(new LayoutNode { FlexGrow = 1 });
+
+        YogaLayout.Calculate(root, 800, 600);
+
+        // Available = 320 - 20 (gap) = 300, split evenly
+        AssertApprox(150, root.Children[0].ComputedWidth, "Child0 Width");
+        AssertApprox(150, root.Children[1].ComputedWidth, "Child1 Width");
+    }
 }

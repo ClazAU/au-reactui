@@ -79,7 +79,7 @@ public struct Rect
     }
 
     public readonly bool Contains(float px, float py) =>
-        px >= X && px <= X + Width && py >= Y && py <= Y + Height;
+        px >= X && px < X + Width && py >= Y && py < Y + Height;
 
     public readonly float Right => X + Width;
     public readonly float Bottom => Y + Height;

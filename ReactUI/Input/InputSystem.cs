@@ -377,13 +377,20 @@ public static class InputSystem
                 }
             }
 
-            // Fire onKeyDown for any key
+            // Fire onKeyDown for any key, passing the KeyCode
             foreach (UnityEngine.KeyCode kc in System.Enum.GetValues(typeof(UnityEngine.KeyCode)))
             {
                 if (kc == UnityEngine.KeyCode.None) continue;
                 if (UnityEngine.Input.GetKeyDown(kc))
                 {
-                    FireEvent(node, "onKeyDown");
+                    var lastVNode = node.LastVNode;
+                    if (lastVNode != null && lastVNode.Props.TryGetValue("onKeyDown", out var handler))
+                    {
+                        if (handler is System.Action<UnityEngine.KeyCode> kcAction)
+                            try { kcAction(kc); } catch { }
+                        else if (handler is System.Action action)
+                            try { action(); } catch { }
+                    }
                     break;
                 }
             }

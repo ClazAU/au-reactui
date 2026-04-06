@@ -45,6 +45,17 @@ public static class FocusManager
         SetFocus(focusable[idx]);
     }
 
+    /// <summary>
+    /// Programmatically set focus to an element by its VNode key.
+    /// Searches all mounted roots for a node with the matching key.
+    /// </summary>
+    public static void SetFocusByKey(string key)
+    {
+        var node = Core.Scheduler.FindNodeByKey(key);
+        if (node != null)
+            SetFocus(node);
+    }
+
     static void CollectFocusable(Core.UINode node, List<Core.UINode> list)
     {
         if (node.Type is "button" or "input" or "select" or "toggle" or "slider" or "keycapture")

@@ -1,0 +1,96 @@
+.panel {
+    padding: 20;
+    background: #1a1a2eE8;
+    border-radius: 16;
+    border-width: 1;
+    border-color: #ffffff15;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    gap: 12;
+}
+
+.title {
+    font-size: 22;
+    font-weight: 700;
+    color: #e0e0e0;
+}
+
+.count {
+    font-size: 32;
+    font-weight: 700;
+}
+
+.btn-row {
+    flex-direction: row;
+    gap: 8;
+}
+
+.btn {
+    padding: 6 12;
+    border-radius: 6;
+    font-size: 13;
+    font-weight: 600;
+    cursor: pointer;
+    opacity: 0.9;
+    transition: opacity 0.1s ease;
+}
+
+.btn:hover {
+    opacity: 1;
+}
+
+.btn-red {
+    background: #ef4444;
+    color: #ffffff;
+}
+
+.btn-orange {
+    background: #f97316;
+    color: #ffffff;
+}
+
+.btn-gray {
+    background: #6b7280;
+    color: #ffffff;
+}
+
+.btn-green {
+    background: #22c55e;
+    color: #ffffff;
+}
+
+.btn-blue {
+    background: #3b82f6;
+    color: #ffffff;
+}
+
+.input {
+    padding: 8 12;
+    background: #1a1a2e;
+    border-radius: 8;
+    border-width: 1;
+    border-color: #444444;
+    color: #e0e0e0;
+    font-size: 14;
+    transition: border-color 0.15s ease;
+}
+
+.input:focus {
+    border-color: #7c3aed;
+}
+
+.greeting {
+    font-size: 14;
+    color: #7c3aed;
+}
+
+.section {
+    background: #2d2a33;
+    border-radius: 12;
+    padding: 16;
+    gap: 8;
+}
+
+.label {
+    font-size: 13;
+    color: #a0a0a0;
+}

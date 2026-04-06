@@ -65,15 +65,31 @@ public static class YogaLayout
     {
         bool row = IsRow(node.FlexDirection);
 
-        // Resolve own definite size
+        // Resolve own definite size (including percent)
         float nodeW = ResolveSize(node.Width, availableWidth, widthMode);
+        if (IsNaN(nodeW) && !IsNaN(node.WidthPercent) && !IsNaN(availableWidth))
+            nodeW = availableWidth * node.WidthPercent / 100f;
         float nodeH = ResolveSize(node.Height, availableHeight, heightMode);
+        if (IsNaN(nodeH) && !IsNaN(node.HeightPercent) && !IsNaN(availableHeight))
+            nodeH = availableHeight * node.HeightPercent / 100f;
 
-        // Apply aspect ratio to resolve missing dimension
+        // Apply aspect ratio to resolve missing dimension.
+        // Aspect ratio takes precedence over the mode-based fallback:
+        // if the node has an explicit width + aspect-ratio but no explicit height,
+        // derive height from width/ratio rather than using the available height.
         if (!IsNaN(node.AspectRatio))
         {
-            if (IsNaN(nodeH) && !IsNaN(nodeW)) nodeH = nodeW / node.AspectRatio;
-            else if (IsNaN(nodeW) && !IsNaN(nodeH)) nodeW = nodeH * node.AspectRatio;
+            bool hasExplicitW = !IsNaN(node.Width) || !IsNaN(node.WidthPercent);
+            bool hasExplicitH = !IsNaN(node.Height) || !IsNaN(node.HeightPercent);
+
+            if (!hasExplicitH && !IsNaN(nodeW))
+            {
+                nodeH = nodeW / node.AspectRatio;
+            }
+            else if (!hasExplicitW && !IsNaN(nodeH))
+            {
+                nodeW = nodeH * node.AspectRatio;
+            }
         }
 
         // Apply min/max constraints
@@ -263,6 +279,9 @@ public static class YogaLayout
         return lines;
     }
 
+    // Main-axis percent size helpers
+    private static float MainSizePercent(LayoutNode n, bool row) => row ? n.WidthPercent : n.HeightPercent;
+
     // --------------------------------------------------------- resolve flex basis for one child
     private static float ResolveFlexBasis(LayoutNode child, bool row, float innerMain, float innerCross)
     {
@@ -273,6 +292,14 @@ public static class YogaLayout
             float size = MainSize(child, row);
             if (!IsNaN(size))
                 basis = size;
+        }
+
+        // Resolve percent on main axis (e.g. width:50% in a row container)
+        if (IsNaN(basis))
+        {
+            float pct = MainSizePercent(child, row);
+            if (!IsNaN(pct) && !IsNaN(innerMain))
+                basis = innerMain * pct / 100f;
         }
 
         // If still NaN, we need to measure/layout the child to get intrinsic size
@@ -428,8 +455,11 @@ public static class YogaLayout
 
             // Handle AlignItems.Stretch: if cross size is auto and align is stretch, fill cross
             // Only stretch when parent's cross axis is definite (explicit size or Exactly mode)
+            // Don't stretch if child has an explicit cross size (including percent)
             AlignItems effectiveAlign = GetEffectiveAlign(child, parent);
-            if (effectiveAlign == AlignItems.Stretch && IsNaN(CrossSize(child, row)) && !IsNaN(childCrossAvail) && crossDefinite)
+            float crossPercent = row ? child.HeightPercent : child.WidthPercent;
+            bool hasCrossSize = !IsNaN(CrossSize(child, row)) || !IsNaN(crossPercent);
+            if (effectiveAlign == AlignItems.Stretch && !hasCrossSize && !IsNaN(childCrossAvail) && crossDefinite)
             {
                 float crossMargins = CrossMarginStart(child, row) + CrossMarginEnd(child, row);
                 float stretchedCross = childCrossAvail - crossMargins;
@@ -497,7 +527,18 @@ public static class YogaLayout
         float leadingSpace = 0;
         float betweenSpace = parent.Gap;
 
-        switch (parent.JustifyContent)
+        // In CSS, justify-content aligns along the main axis direction.
+        // For reverse directions, flex-start means the end edge (right for row-reverse,
+        // bottom for column-reverse), and flex-end means the start edge.
+        JustifyContent jc = parent.JustifyContent;
+        if (reverse)
+        {
+            // Flip start/end for reverse directions
+            if (jc == JustifyContent.FlexStart) jc = JustifyContent.FlexEnd;
+            else if (jc == JustifyContent.FlexEnd) jc = JustifyContent.FlexStart;
+        }
+
+        switch (jc)
         {
             case JustifyContent.FlexStart:
                 leadingSpace = 0;
@@ -537,6 +578,8 @@ public static class YogaLayout
 
         for (int idx = 0; idx < count; idx++)
         {
+            // For reverse: iterate items in reverse order so first child ends up
+            // at the far end (right for row-reverse, bottom for column-reverse)
             int i = reverse ? (count - 1 - idx) : idx;
             var child = line.Items[i];
 
