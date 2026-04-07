@@ -253,7 +253,8 @@ public class RenderPipeline
                     Rect = new Core.Rect(cursorX, cursorY, 1.5f, cursorH),
                     ClipRect = clipRect,
                     ZOrder = zOrder + 2,
-                    BackgroundColor = style.Color ?? Style.UIColor.White,
+                    BackgroundColor = (style.Color.HasValue && style.Color.Value.A > 0.01f)
+                        ? style.Color.Value : Style.UIColor.White,
                     Opacity = opacity * ((UnityEngine.Mathf.Sin(UnityEngine.Time.time * 6f) + 1f) * 0.5f), // blink
                 });
             }
