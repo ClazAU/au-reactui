@@ -36,6 +36,18 @@ public static class InputSystem
         _dragTargets[componentId] = new DragTarget { GetX = getX, GetY = getY, SetX = setX, SetY = setY };
     }
 
+    /// <summary>
+    /// Register a specific element (by key) as a drag handle.
+    /// Only mousedown on this element (or its children) will start the drag.
+    /// The drag still moves the position via the provided setters.
+    /// </summary>
+    public static void RegisterDragHandle(string elementKey, Func<float> getX, Func<float> getY, Action<float> setX, Action<float> setY)
+    {
+        _dragHandles[elementKey] = new DragTarget { GetX = getX, GetY = getY, SetX = setX, SetY = setY };
+    }
+
+    static readonly System.Collections.Generic.Dictionary<string, DragTarget> _dragHandles = new();
+
     public static Core.UINode? HoveredNode => _hoveredNode;
     public static Core.UINode? FocusedNode => FocusManager.Focused;
 
@@ -130,20 +142,41 @@ public static class InputSystem
                 }
                 else if (!HasEventHandler(hit, "onClick") && !_isDragging)
                 {
-                    // Nothing interactive consumed the click — try panel drag as fallback
-                    var ancestor = hit;
-                    while (ancestor != null)
+                    // Check drag handles first (element-level, by key)
+                    bool foundHandle = false;
+                    var handleCheck = hit;
+                    while (handleCheck != null)
                     {
-                        if (ancestor.Type == "__component" && _dragTargets.TryGetValue(ancestor.ComponentId, out var target))
+                        if (handleCheck.Key != null && _dragHandles.TryGetValue(handleCheck.Key, out var handleTarget))
                         {
-                            _dragOffsetX = mx - target.GetX();
-                            _dragOffsetY = my - target.GetY();
-                            _dragSetX = target.SetX;
-                            _dragSetY = target.SetY;
+                            _dragOffsetX = mx - handleTarget.GetX();
+                            _dragOffsetY = my - handleTarget.GetY();
+                            _dragSetX = handleTarget.SetX;
+                            _dragSetY = handleTarget.SetY;
                             _isDragging = true;
+                            foundHandle = true;
                             break;
                         }
-                        ancestor = ancestor.Parent;
+                        handleCheck = handleCheck.Parent;
+                    }
+
+                    // Fall back to component-level drag targets
+                    if (!foundHandle)
+                    {
+                        var ancestor = hit;
+                        while (ancestor != null)
+                        {
+                            if (ancestor.Type == "__component" && _dragTargets.TryGetValue(ancestor.ComponentId, out var target))
+                            {
+                                _dragOffsetX = mx - target.GetX();
+                                _dragOffsetY = my - target.GetY();
+                                _dragSetX = target.SetX;
+                                _dragSetY = target.SetY;
+                                _isDragging = true;
+                                break;
+                            }
+                            ancestor = ancestor.Parent;
+                        }
                     }
                 }
             }

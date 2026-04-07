@@ -148,13 +148,18 @@ public static class EditorRoot
         );
     }
 
-    /// <summary>Toolbar that doubles as a drag handle via onMouseDown.</summary>
+    /// <summary>Toolbar that doubles as a drag handle.</summary>
     private static Core.VNode DragBar(
         string fileName, bool dirty, bool autoRun, float zoom, bool isFullscreen,
         Action onNew, Action onSave, Action onRun, Action onToggleAutoRun,
         Action zoomOut, Action zoomIn, Action toggleFullscreen,
         float posX, float posY, Action<float> setPosX, Action<float> setPosY)
     {
+        // Register this element as a drag handle
+        var cx = posX; var cy = posY;
+        ReactUI.Input.InputSystem.RegisterDragHandle(
+            "editor-toolbar", () => cx, () => cy, setPosX, setPosY);
+
         var node = Div(new S
             {
                 FlexDirection = Style.FlexDirection.Row,
@@ -181,13 +186,7 @@ public static class EditorRoot
                 Padding = new Style.EdgeValues(0, 0, 0, 8),
             })
         );
-
-        // Register drag on mousedown of the toolbar background
-        var cx = posX; var cy = posY;
-        node.Props["onMouseDown"] = (Action)(() =>
-        {
-            WindowDragResize.StartDrag(cx, cy, setPosX, setPosY);
-        });
+        node.Key = "editor-toolbar";
 
         return node;
     }
@@ -210,7 +209,7 @@ public static class EditorRoot
         var cw = width; var ch = height;
         node.Props["onMouseDown"] = (Action)(() =>
         {
-            WindowDragResize.StartResize(cw, ch, setWidth, setHeight);
+            ResizeTracker.Start(cw, ch, setWidth, setHeight);
         });
 
         return node;
@@ -229,63 +228,36 @@ public static class EditorRoot
 }
 
 /// <summary>
-/// Unified drag/resize tracker. Only one mode active at a time.
+/// Resize tracker for the editor window.
 /// </summary>
-public static class WindowDragResize
+public static class ResizeTracker
 {
-    private enum Mode { None, Drag, Resize }
-    private static Mode _mode;
+    private static bool _active;
     private static float _startMouseX, _startMouseY;
-    private static float _startValX, _startValY;
-    private static Action<float>? _setX;
-    private static Action<float>? _setY;
+    private static float _startW, _startH;
+    private static Action<float>? _setW;
+    private static Action<float>? _setH;
 
-    public static void StartDrag(float currentX, float currentY, Action<float> setX, Action<float> setY)
+    public static void Start(float currentW, float currentH, Action<float> setW, Action<float> setH)
     {
-        _mode = Mode.Drag;
+        _active = true;
         _startMouseX = UnityEngine.Input.mousePosition.x;
         _startMouseY = UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y;
-        _startValX = currentX;
-        _startValY = currentY;
-        _setX = setX;
-        _setY = setY;
-    }
-
-    public static void StartResize(float currentW, float currentH, Action<float> setW, Action<float> setH)
-    {
-        _mode = Mode.Resize;
-        _startMouseX = UnityEngine.Input.mousePosition.x;
-        _startMouseY = UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y;
-        _startValX = currentW;
-        _startValY = currentH;
-        _setX = setW;
-        _setY = setH;
+        _startW = currentW;
+        _startH = currentH;
+        _setW = setW;
+        _setH = setH;
     }
 
     public static void Tick()
     {
-        if (_mode == Mode.None) return;
+        if (!_active) return;
+        if (!UnityEngine.Input.GetMouseButton(0)) { _active = false; return; }
 
-        if (!UnityEngine.Input.GetMouseButton(0))
-        {
-            _mode = Mode.None;
-            return;
-        }
+        float dx = UnityEngine.Input.mousePosition.x - _startMouseX;
+        float dy = (UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y) - _startMouseY;
 
-        float mx = UnityEngine.Input.mousePosition.x;
-        float my = UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y;
-        float dx = mx - _startMouseX;
-        float dy = my - _startMouseY;
-
-        if (_mode == Mode.Drag)
-        {
-            _setX?.Invoke(_startValX + dx);
-            _setY?.Invoke(_startValY + dy);
-        }
-        else if (_mode == Mode.Resize)
-        {
-            _setX?.Invoke(Math.Max(EditorRoot.MinWidth, _startValX + dx));
-            _setY?.Invoke(Math.Max(EditorRoot.MinHeight, _startValY + dy));
-        }
+        _setW?.Invoke(Math.Max(EditorRoot.MinWidth, _startW + dx));
+        _setH?.Invoke(Math.Max(EditorRoot.MinHeight, _startH + dy));
     }
 }

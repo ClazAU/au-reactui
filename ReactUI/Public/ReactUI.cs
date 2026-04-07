@@ -120,6 +120,13 @@ public static class UI
     public static VNode KeyCapture(Action<UnityEngine.KeyCode> onCapture, Style.Style? style = null, string prompt = "Press a key...") =>
         KeyCaptureElement.Create(onCapture, style, prompt);
 
+    /// <summary>
+    /// Make a specific element (by key) a drag handle. Only mousedown on this element
+    /// starts the drag. Use node.Key = "my-handle" then UI.DragHandle("my-handle", ...).
+    /// </summary>
+    public static void DragHandle(string elementKey, Func<float> getX, Func<float> getY, Action<float> setX, Action<float> setY) =>
+        ReactUI.Input.InputSystem.RegisterDragHandle(elementKey, getX, getY, setX, setY);
+
     public static VNode Portal(params VNode[] children) =>
         PortalElement.Create(children);
 
