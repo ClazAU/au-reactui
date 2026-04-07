@@ -21,7 +21,11 @@ public static class EditorRoot
     private static bool _visible = true;
 
     public static void SetWatchDirectory(string dir) => _watchDir = dir;
-    public static void ToggleVisible() => _visible = !_visible;
+    public static void ToggleVisible()
+    {
+        _visible = !_visible;
+        Core.Scheduler.ScheduleRenderAll();
+    }
 
     internal const float MinWidth = 400;
     internal const float MinHeight = 300;
