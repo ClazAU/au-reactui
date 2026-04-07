@@ -144,12 +144,18 @@ public static class CodeEditor
             if (editArea.Children != null && editArea.Children.Length > 0)
                 editArea.Children[0].Props["onKeyDown"] = onKeyDown;
 
+            // Estimate min width from line content length
+            float charWidth = fontSize * 0.6f;
+            float lineMinWidth = lineNumWidth + (lineText.Length * charWidth) + 20;
+            if (lineMinWidth < 300) lineMinWidth = 300;
+
             var lineNode = Div(new S
             {
                 FlexDirection = Style.FlexDirection.Row,
                 AlignItems = Style.AlignItems.Center,
                 MinHeight = Style.StyleValue.Px(lineHeight),
-                FlexShrink = 0, // don't compress lines — scroll instead
+                MinWidth = Style.StyleValue.Px(lineMinWidth),
+                FlexShrink = 0,
             },
                 Text((lineIdx + 1).ToString(), lineNumStyle),
                 editArea
