@@ -146,8 +146,17 @@ public static class ShaderCache
         if (_materials.TryGetValue(name, out var mat))
             return mat;
 
-        // Return fallback
-        return _fallbackMaterial ?? new Material(Shader.Find("Hidden/Internal-Colored")!);
+        // Return cached fallback
+        if (_fallbackMaterial == null)
+        {
+            _fallbackMaterial = new Material(Shader.Find("Hidden/Internal-Colored")!);
+            _fallbackMaterial.hideFlags = HideFlags.HideAndDontSave;
+            _fallbackMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            _fallbackMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            _fallbackMaterial.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            _fallbackMaterial.SetInt("_ZWrite", 0);
+        }
+        return _fallbackMaterial;
     }
 
     /// <summary>
