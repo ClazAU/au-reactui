@@ -48,18 +48,13 @@ public class JintBridge
             if (!defaultExport.IsObject())
                 return null;
 
+            // Return a plain render function — the Reconciler handles
+            // BeginComponent/EndComponent via CreateComponentNode, so we
+            // must NOT wrap with our own hooks context here.
             return () =>
             {
-                HooksRuntime.BeginComponent(componentId);
-                try
-                {
-                    var result = _engine.Invoke("__defaultExport__");
-                    return UnwrapVNode(result) ?? new VNode("div");
-                }
-                finally
-                {
-                    HooksRuntime.EndComponent();
-                }
+                var result = _engine.Invoke("__defaultExport__");
+                return UnwrapVNode(result) ?? new VNode("div");
             };
         }
         catch (Exception ex)
