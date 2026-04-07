@@ -8,8 +8,8 @@ using S = ReactUI.Style.Style;
 namespace ReactUI.Editor.Components;
 
 /// <summary>
-/// Multi-line code editor with syntax highlighting.
-/// Focused line: editable Input. Unfocused lines: colored Text spans.
+/// Multi-line code editor with syntax highlighting on all lines.
+/// Uses transparent Input + absolute overlay with PointerEvents=false.
 /// </summary>
 public static class CodeEditor
 {
@@ -62,7 +62,6 @@ public static class CodeEditor
                         global::ReactUI.Input.FocusManager.SetFocusByKey($"editor-line-{lineIdx + 1}");
                         break;
                     }
-
                     case KeyCode.Backspace when lineText.Length == 0 && lineIdx > 0:
                     {
                         var newLines = lines.Where((_, idx) => idx != lineIdx).ToArray();
@@ -71,12 +70,10 @@ public static class CodeEditor
                         global::ReactUI.Input.FocusManager.SetFocusByKey($"editor-line-{lineIdx - 1}");
                         break;
                     }
-
                     case KeyCode.UpArrow when lineIdx > 0:
                         setFocusedLine(lineIdx - 1);
                         global::ReactUI.Input.FocusManager.SetFocusByKey($"editor-line-{lineIdx - 1}");
                         break;
-
                     case KeyCode.DownArrow when lineIdx < lines.Length - 1:
                         setFocusedLine(lineIdx + 1);
                         global::ReactUI.Input.FocusManager.SetFocusByKey($"editor-line-{lineIdx + 1}");
@@ -85,7 +82,7 @@ public static class CodeEditor
             };
 
             // Line number
-            var lineNumStyle = new S
+            var lineNumNode = Text((lineIdx + 1).ToString(), new S
             {
                 Width = Style.StyleValue.Px(lineNumWidth),
                 FlexShrink = 0,
@@ -93,66 +90,73 @@ public static class CodeEditor
                 FontSize = fontSize,
                 Color = Style.UIColor.FromHex(isFocused ? "#888" : "#444"),
                 Padding = new Style.EdgeValues(0, 8 * zoom, 0, 0),
-            };
+            });
 
-            // Estimate min width
-            float charWidth = fontSize * 0.6f;
-            float lineMinWidth = lineNumWidth + (lineText.Length * charWidth) + 20;
-            if (lineMinWidth < 300) lineMinWidth = 300;
-
-            Core.VNode contentArea;
-
-            if (isFocused)
+            // Syntax highlighted spans
+            var tokens = SyntaxHighlighter.Tokenize(lineText, lang);
+            var spans = new List<Core.VNode>();
+            foreach (var token in tokens)
             {
-                // Focused: show editable Input
-                var inputStyle = new S
+                spans.Add(Text(token.Text, new S
                 {
-                    FlexGrow = 1,
-                    FlexShrink = 0,
                     FontSize = fontSize,
-                    Color = Style.UIColor.FromHex("#d4d4d4"),
-                    Background = Style.UIColor.FromHex("#ffffff08"),
-                    Padding = new Style.EdgeValues(2 * zoom, 4 * zoom),
-                    BorderWidth = 0,
-                    TextAlign = Style.TextAlign.Left,
-                };
-                contentArea = UI.Input(lineText, onLineChange, inputStyle);
-                contentArea.Props["onKeyDown"] = onKeyDown;
+                    Color = SyntaxHighlighter.GetColor(token.Type),
+                }));
             }
-            else
-            {
-                // Unfocused: show syntax-highlighted text spans (clickable to focus)
-                var tokens = SyntaxHighlighter.Tokenize(lineText, lang);
-                var spans = new List<Core.VNode>();
-                foreach (var token in tokens)
-                {
-                    spans.Add(Text(token.Text, new S
-                    {
-                        FontSize = fontSize,
-                        Color = SyntaxHighlighter.GetColor(token.Type),
-                    }));
-                }
 
-                var idx = lineIdx;
-                var capturedIdx = idx;
-                contentArea = Div(new S
-                {
-                    FlexGrow = 1,
-                    FlexShrink = 0,
-                    FlexDirection = Style.FlexDirection.Row,
-                    AlignItems = Style.AlignItems.Center,
-                    JustifyContent = Style.JustifyContent.FlexStart,
-                    Padding = new Style.EdgeValues(2 * zoom, 4 * zoom),
-                    Background = Style.UIColor.Transparent,
-                    Cursor = Style.CursorType.Text,
-                    Hover = new S { Background = Style.UIColor.FromHex("#ffffff05") },
-                }, spans.ToArray());
-                contentArea.Props["onClick"] = (Action)(() =>
+            // Overlay: syntax colored text (pointer-events:none so clicks reach input)
+            var overlay = Div(new S
+            {
+                Position = Style.PositionType.Absolute,
+                Inset = new Style.EdgeValues(0),
+                FlexDirection = Style.FlexDirection.Row,
+                AlignItems = Style.AlignItems.Center,
+                JustifyContent = Style.JustifyContent.FlexStart,
+                Padding = new Style.EdgeValues(2 * zoom, 4 * zoom),
+                PointerEvents = false,
+            }, spans.ToArray());
+
+            // Input: transparent text, handles keyboard input
+            var inputNode = UI.Input(lineText, onLineChange, new S
+            {
+                FlexGrow = 1,
+                FlexShrink = 0,
+                FontSize = fontSize,
+                Color = Style.UIColor.Transparent,
+                Background = isFocused ? Style.UIColor.FromHex("#ffffff08") : Style.UIColor.Transparent,
+                Padding = new Style.EdgeValues(2 * zoom, 4 * zoom),
+                BorderWidth = 0,
+                TextAlign = Style.TextAlign.Left,
+            });
+            inputNode.Props["onKeyDown"] = onKeyDown;
+
+            // Container: input underneath, overlay on top
+            var editArea = Div(new S
+            {
+                FlexGrow = 1,
+                FlexShrink = 0,
+                Position = Style.PositionType.Relative,
+                Cursor = Style.CursorType.Text,
+            },
+                inputNode,
+                overlay
+            );
+
+            // Click unfocused line to focus it
+            if (!isFocused)
+            {
+                var capturedIdx = lineIdx;
+                editArea.Props["onClick"] = (Action)(() =>
                 {
                     setFocusedLine(capturedIdx);
                     global::ReactUI.Input.FocusManager.SetFocusByKey($"editor-line-{capturedIdx}");
                 });
             }
+
+            // Min width from content length
+            float charWidth = fontSize * 0.6f;
+            float lineMinWidth = lineNumWidth + (lineText.Length * charWidth) + 20;
+            if (lineMinWidth < 300) lineMinWidth = 300;
 
             var lineNode = Div(new S
             {
@@ -162,8 +166,8 @@ public static class CodeEditor
                 MinWidth = Style.StyleValue.Px(lineMinWidth),
                 FlexShrink = 0,
             },
-                Text((lineIdx + 1).ToString(), lineNumStyle),
-                contentArea
+                lineNumNode,
+                editArea
             );
             lineNode.Key = $"editor-line-{lineIdx}";
 
