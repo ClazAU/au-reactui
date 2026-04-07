@@ -114,6 +114,7 @@ public static class CodeEditor
                     Background = Style.UIColor.FromHex("#ffffff08"),
                     Padding = new Style.EdgeValues(2 * zoom, 4 * zoom),
                     BorderWidth = 0,
+                    TextAlign = Style.TextAlign.Left,
                 };
                 contentArea = UI.Input(lineText, onLineChange, inputStyle);
                 contentArea.Props["onKeyDown"] = onKeyDown;
@@ -133,21 +134,24 @@ public static class CodeEditor
                 }
 
                 var idx = lineIdx;
-                contentArea = Button(() => {
-                    setFocusedLine(idx);
-                    global::ReactUI.Input.FocusManager.SetFocusByKey($"editor-line-{idx}");
-                }, new S
+                var capturedIdx = idx;
+                contentArea = Div(new S
                 {
                     FlexGrow = 1,
                     FlexShrink = 0,
                     FlexDirection = Style.FlexDirection.Row,
                     AlignItems = Style.AlignItems.Center,
+                    JustifyContent = Style.JustifyContent.FlexStart,
                     Padding = new Style.EdgeValues(2 * zoom, 4 * zoom),
                     Background = Style.UIColor.Transparent,
-                    BorderWidth = 0,
                     Cursor = Style.CursorType.Text,
                     Hover = new S { Background = Style.UIColor.FromHex("#ffffff05") },
                 }, spans.ToArray());
+                contentArea.Props["onClick"] = (Action)(() =>
+                {
+                    setFocusedLine(capturedIdx);
+                    global::ReactUI.Input.FocusManager.SetFocusByKey($"editor-line-{capturedIdx}");
+                });
             }
 
             var lineNode = Div(new S
