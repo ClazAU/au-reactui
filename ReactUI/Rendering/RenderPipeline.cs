@@ -19,12 +19,9 @@ public class RenderPipeline
     private Material? _sdfRectMaterial;
     private Material? _sdfTextMaterial;
     private Material? _imageMaterial;
-    private Material? _fallbackMaterial;
 
-    private bool _useSdfShaders;
-
-    // Reusable 1x1 solid white texture for fallback colored rect rendering
-    private static Texture2D? _whiteTexture;
+    // Simple colored material for solid rect helpers (e.g. blur approximation)
+    private Material? _coloredMaterial;
 
     public void Initialize()
     {
@@ -34,16 +31,16 @@ public class RenderPipeline
         _sdfRectMaterial = ShaderCache.GetMaterial("ReactUI/SDFRect");
         _sdfTextMaterial = ShaderCache.GetMaterial("ReactUI/SDFText");
         _imageMaterial = ShaderCache.GetMaterial("ReactUI/Image");
-        _fallbackMaterial = ShaderCache.GetFallbackMaterial();
 
-        _useSdfShaders = ShaderCache.HasShader("ReactUI/SDFRect");
-
-        if (_whiteTexture == null)
+        var coloredShader = Shader.Find("Hidden/Internal-Colored");
+        if (coloredShader != null)
         {
-            _whiteTexture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-            _whiteTexture.SetPixel(0, 0, Color.white);
-            _whiteTexture.Apply();
-            _whiteTexture.hideFlags = HideFlags.HideAndDontSave;
+            _coloredMaterial = new Material(coloredShader);
+            _coloredMaterial.hideFlags = HideFlags.HideAndDontSave;
+            _coloredMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            _coloredMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            _coloredMaterial.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            _coloredMaterial.SetInt("_ZWrite", 0);
         }
     }
 
@@ -142,7 +139,7 @@ public class RenderPipeline
 
         if (hasBackground || hasGradient || hasBorder || hasShadow || hasRadius)
         {
-            // Pass the element rect — DrawSdfRect/DrawFallbackRect handle shadow expansion
+            // Pass the element rect — DrawSdfRect handles shadow expansion
             _commands.Add(new DrawCommand
             {
                 Type = DrawType.SdfRect,
@@ -421,8 +418,8 @@ public class RenderPipeline
         if (_commands.Count == 0) return;
 
         GL.PushMatrix();
-        // Orthographic projection: pixel coordinates, origin at top-left
-        GL.LoadPixelMatrix(0, Screen.width, Screen.height, 0);
+        // Orthographic projection in logical pixels — UIScale maps them to screen pixels
+        GL.LoadPixelMatrix(0, UIScale.LogicalWidth, UIScale.LogicalHeight, 0);
 
         foreach (var cmd in _commands)
         {
@@ -442,10 +439,7 @@ public class RenderPipeline
             switch (cmd.Type)
             {
                 case DrawType.SdfRect:
-                    if (_useSdfShaders)
-                        DrawSdfRect(cmd);
-                    else
-                        DrawFallbackRect(cmd);
+                    DrawSdfRect(cmd);
                     break;
 
                 case DrawType.BlurRect:
@@ -554,50 +548,6 @@ public class RenderPipeline
     }
 
     /// <summary>
-    /// Fallback renderer: generates an SDF texture on CPU (cached) and draws via GUI.DrawTexture.
-    /// Supports rounded corners, borders, box shadows, gradients, and opacity.
-    /// </summary>
-    private void DrawFallbackRect(DrawCommand cmd)
-    {
-        int w = Mathf.CeilToInt(cmd.Rect.Width);
-        int h = Mathf.CeilToInt(cmd.Rect.Height);
-        if (w <= 0 || h <= 0) return;
-
-        var generated = SdfTextureGenerator.GetOrCreate(
-            w, h,
-            cmd.BackgroundColor,
-            cmd.Gradient,
-            cmd.BorderRadiusTL, cmd.BorderRadiusTR, cmd.BorderRadiusBR, cmd.BorderRadiusBL,
-            cmd.BorderColor, cmd.BorderWidth,
-            cmd.Shadow,
-            cmd.Opacity
-        );
-
-        if (generated == null || generated.Value.Texture == null) return;
-
-        var tex = generated.Value;
-
-        // Pop GL matrix to use GUI drawing, then push back after
-        GL.PopMatrix();
-
-        // Account for shadow padding — texture is larger than the element rect
-        var drawRect = new UnityEngine.Rect(
-            cmd.Rect.X - tex.PaddingLeft,
-            cmd.Rect.Y - tex.PaddingTop,
-            tex.Texture.width,
-            tex.Texture.height
-        );
-
-        var style = new GUIStyle();
-        style.normal.background = tex.Texture;
-        GUI.Box(drawRect, GUIContent.none, style);
-
-        // Re-push GL matrix for subsequent commands
-        GL.PushMatrix();
-        GL.LoadPixelMatrix(0, Screen.width, Screen.height, 0);
-    }
-
-    /// <summary>
     /// Draw backdrop blur effect. Uses the Kawase blur shader if available,
     /// otherwise this is a no-op (backdrop blur requires render texture capture).
     /// </summary>
@@ -609,7 +559,7 @@ public class RenderPipeline
         // For now, draw a semi-transparent overlay as a visual approximation.
         if (!ShaderCache.HasShader("ReactUI/KawaseBlur"))
         {
-            // Fallback: draw a frosted-glass approximation with a semi-transparent white overlay
+            // Draw a frosted-glass approximation with a semi-transparent white overlay
             var frostedColor = new Color(1, 1, 1, 0.1f * cmd.Opacity);
             DrawSolidRect(cmd.Rect, frostedColor);
         }
@@ -623,6 +573,11 @@ public class RenderPipeline
         if (string.IsNullOrEmpty(cmd.Text)) return;
 
         GL.PopMatrix();
+
+        // GUI.Label works in screen pixels — use GUI.matrix to scale from logical coords
+        float s = UIScale.Factor;
+        var prevMatrix = GUI.matrix;
+        GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(s, s, 1f));
 
         bool clipping = clipRect.HasValue && clipRect.Value.Width < float.MaxValue;
         if (clipping)
@@ -662,8 +617,10 @@ public class RenderPipeline
         if (clipping)
             GUI.EndClip();
 
+        GUI.matrix = prevMatrix;
+
         GL.PushMatrix();
-        GL.LoadPixelMatrix(0, Screen.width, Screen.height, 0);
+        GL.LoadPixelMatrix(0, UIScale.LogicalWidth, UIScale.LogicalHeight, 0);
     }
 
     /// <summary>
@@ -676,23 +633,15 @@ public class RenderPipeline
         // Compute source UV rect based on ObjectFit
         var uvRect = ComputeObjectFitUV(cmd.Texture, cmd.Rect, cmd.ObjectFit);
 
-        Material? mat;
-        if (_useSdfShaders && ShaderCache.HasShader("ReactUI/Image"))
-        {
-            mat = ShaderCache.GetMaterial("ReactUI/Image");
-            mat.SetTexture("_MainTex", cmd.Texture);
-            mat.SetVector("_RectSize", new Vector4(cmd.Rect.Width, cmd.Rect.Height, 0, 0));
-            mat.SetVector("_Radii", new Vector4(
-                cmd.BorderRadiusTL, cmd.BorderRadiusTR, cmd.BorderRadiusBR, cmd.BorderRadiusBL));
-            mat.SetFloat("_Opacity", cmd.Opacity);
-        }
-        else
-        {
-            mat = _fallbackMaterial;
-            mat?.SetTexture("_MainTex", cmd.Texture);
-        }
+        if (_imageMaterial == null) return;
 
-        mat?.SetPass(0);
+        _imageMaterial.SetTexture("_MainTex", cmd.Texture);
+        _imageMaterial.SetVector("_RectSize", new Vector4(cmd.Rect.Width, cmd.Rect.Height, 0, 0));
+        _imageMaterial.SetVector("_Radii", new Vector4(
+            cmd.BorderRadiusTL, cmd.BorderRadiusTR, cmd.BorderRadiusBR, cmd.BorderRadiusBL));
+        _imageMaterial.SetFloat("_Opacity", cmd.Opacity);
+
+        _imageMaterial.SetPass(0);
 
         GL.Begin(7 /* GL.QUADS */);
         GL.Color(new Color(1, 1, 1, cmd.Opacity));
@@ -727,7 +676,7 @@ public class RenderPipeline
 
     private void DrawSolidRect(Core.Rect rect, Color color)
     {
-        _fallbackMaterial?.SetPass(0);
+        _coloredMaterial?.SetPass(0);
         GL.Begin(7 /* GL.QUADS */);
         GL.Color(color);
         GL.Vertex3(rect.X, rect.Y, 0);
@@ -735,60 +684,6 @@ public class RenderPipeline
         GL.Vertex3(rect.Right, rect.Bottom, 0);
         GL.Vertex3(rect.X, rect.Bottom, 0);
         GL.End();
-    }
-
-    private void DrawGradientRect(Core.Rect rect, float angleDeg, Color colorA, Color colorB)
-    {
-        // Compute per-vertex colors based on gradient angle
-        float rad = angleDeg * Mathf.Deg2Rad;
-        float cos = Mathf.Cos(rad);
-        float sin = Mathf.Sin(rad);
-
-        // Project each corner onto the gradient axis to get interpolation t
-        float cx = 0.5f, cy = 0.5f;
-        float[] ts = new float[4];
-        float[][] corners = { new[] { 0f, 1f }, new[] { 1f, 1f }, new[] { 1f, 0f }, new[] { 0f, 0f } };
-        float minT = float.MaxValue, maxT = float.MinValue;
-
-        for (int i = 0; i < 4; i++)
-        {
-            float dx = corners[i][0] - cx;
-            float dy = corners[i][1] - cy;
-            ts[i] = dx * cos + dy * sin;
-            minT = Mathf.Min(minT, ts[i]);
-            maxT = Mathf.Max(maxT, ts[i]);
-        }
-
-        // Normalize to 0-1 range
-        float range = maxT - minT;
-        if (range < 0.001f) range = 1f;
-
-        Color[] vertColors = new Color[4];
-        for (int i = 0; i < 4; i++)
-        {
-            float t = (ts[i] - minT) / range;
-            vertColors[i] = Color.Lerp(colorA, colorB, t);
-        }
-
-        _fallbackMaterial?.SetPass(0);
-        GL.Begin(7 /* GL.QUADS */);
-        GL.Color(vertColors[0]); GL.Vertex3(rect.X, rect.Y, 0);
-        GL.Color(vertColors[1]); GL.Vertex3(rect.Right, rect.Y, 0);
-        GL.Color(vertColors[2]); GL.Vertex3(rect.Right, rect.Bottom, 0);
-        GL.Color(vertColors[3]); GL.Vertex3(rect.X, rect.Bottom, 0);
-        GL.End();
-    }
-
-    private void DrawBorder(Core.Rect rect, float width, Color color)
-    {
-        // Top edge
-        DrawSolidRect(new Core.Rect(rect.X, rect.Y, rect.Width, width), color);
-        // Bottom edge
-        DrawSolidRect(new Core.Rect(rect.X, rect.Bottom - width, rect.Width, width), color);
-        // Left edge
-        DrawSolidRect(new Core.Rect(rect.X, rect.Y + width, width, rect.Height - width * 2), color);
-        // Right edge
-        DrawSolidRect(new Core.Rect(rect.Right - width, rect.Y + width, width, rect.Height - width * 2), color);
     }
 
     /// <summary>
