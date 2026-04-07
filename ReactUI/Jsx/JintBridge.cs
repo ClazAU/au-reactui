@@ -159,7 +159,10 @@ public class JintBridge
 
         var node = new VNode(typeStr);
 
-        // Process props
+        // Process props — collect className and style separately to merge correctly
+        ReactUI.Style.Style? classStyle = null;
+        ReactUI.Style.Style? inlineStyle = null;
+
         if (!props.IsNull() && !props.IsUndefined() && props.IsObject())
         {
             var propsObj = props.AsObject();
@@ -175,11 +178,10 @@ public class JintBridge
                         node.Key = val.ToString();
                         break;
                     case "style":
-                        node.Style = ConvertStyle(val);
+                        inlineStyle = ConvertStyle(val);
                         break;
                     case "className":
-                        var classStyle = ResolveClassName(val.ToString());
-                        node.Style = node.Style != null ? classStyle.Merge(node.Style) : classStyle;
+                        classStyle = ResolveClassName(val.ToString());
                         break;
                     case "onClick":
                         node.Props["onClick"] = WrapAction(val);
@@ -211,6 +213,14 @@ public class JintBridge
                 }
             }
         }
+
+        // Merge className + inline style (inline wins over class, like CSS specificity)
+        if (classStyle != null && inlineStyle != null)
+            node.Style = classStyle.Merge(inlineStyle);
+        else if (classStyle != null)
+            node.Style = classStyle;
+        else if (inlineStyle != null)
+            node.Style = inlineStyle;
 
         // Process children from the collected array
         var childList = new List<VNode>();
