@@ -456,8 +456,8 @@ public class JintBridge
         var (posX, setPosX) = UseStateHook.UseState(ix);
         var (posY, setPosY) = UseStateHook.UseState(iy);
 
-        var capturedX = posX is double dx ? (float)dx : posX is float fx ? fx : 0f;
-        var capturedY = posY is double dy ? (float)dy : posY is float fy ? fy : 0f;
+        var capturedX = Convert.ToSingle(posX ?? 0);
+        var capturedY = Convert.ToSingle(posY ?? 0);
 
         var ctx = HooksRuntime.Current;
         if (ctx != null)
