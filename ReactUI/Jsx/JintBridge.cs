@@ -456,10 +456,8 @@ public class JintBridge
         var (posX, setPosX) = UseStateHook.UseState(ix);
         var (posY, setPosY) = UseStateHook.UseState(iy);
 
-        var capturedX = (float)(double)posX!;
-        var capturedY = (float)(double)posY!;
-        var setX = (Action<object>)setPosX;
-        var setY = (Action<object>)setPosY;
+        var capturedX = posX is double dx ? (float)dx : posX is float fx ? fx : 0f;
+        var capturedY = posY is double dy ? (float)dy : posY is float fy ? fy : 0f;
 
         var ctx = HooksRuntime.Current;
         if (ctx != null)
@@ -467,14 +465,14 @@ public class JintBridge
             Input.InputSystem.RegisterDraggable(
                 ctx.ComponentId,
                 () => capturedX, () => capturedY,
-                v => setX(v), v => setY(v));
+                v => setPosX(v), v => setPosY(v));
         }
 
         var result = new JsObject(_engine);
         result.FastSetDataProperty("x", JsValue.FromObject(_engine, capturedX));
         result.FastSetDataProperty("y", JsValue.FromObject(_engine, capturedY));
-        result.FastSetDataProperty("setX", JsValue.FromObject(_engine, new Action<JsValue>(v => setX((float)v.AsNumber()))));
-        result.FastSetDataProperty("setY", JsValue.FromObject(_engine, new Action<JsValue>(v => setY((float)v.AsNumber()))));
+        result.FastSetDataProperty("setX", JsValue.FromObject(_engine, new Action<JsValue>(v => setPosX((float)v.AsNumber()))));
+        result.FastSetDataProperty("setY", JsValue.FromObject(_engine, new Action<JsValue>(v => setPosY((float)v.AsNumber()))));
         return result;
     }
 
