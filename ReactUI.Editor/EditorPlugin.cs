@@ -17,7 +17,6 @@ namespace ReactUI.Editor;
 public partial class EditorPlugin : BasePlugin
 {
     private RenderHandle? _editorHandle;
-    private bool _visible;
 
     public override void Load()
     {
@@ -31,7 +30,6 @@ public partial class EditorPlugin : BasePlugin
         EditorRoot.SetWatchDirectory(uiDir);
         UI.WatchJsx(uiDir);
 
-        // Register for per-frame updates via ReactUIBehaviour
         ReactUIBehaviour.OnUpdate += OnUpdate;
 
         Log.LogInfo("ReactUI Editor loaded. Press F10 to toggle.");
@@ -39,22 +37,15 @@ public partial class EditorPlugin : BasePlugin
 
     private void OnUpdate()
     {
-        // Resize tracking
         ResizeTracker.Tick();
 
         if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F10))
         {
-            _visible = !_visible;
-
-            if (_visible && _editorHandle == null)
-            {
+            // Mount once, then toggle visibility — state is preserved
+            if (_editorHandle == null)
                 _editorHandle = UI.Render(EditorRoot.Render);
-            }
-            else if (!_visible && _editorHandle != null)
-            {
-                _editorHandle.Dispose();
-                _editorHandle = null;
-            }
+
+            EditorRoot.ToggleVisible();
         }
     }
 }

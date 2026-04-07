@@ -18,7 +18,10 @@ public static class EditorRoot
     public static Core.VNode Render() => Render_();
 
     private static string _watchDir = "";
+    private static bool _visible = true;
+
     public static void SetWatchDirectory(string dir) => _watchDir = dir;
+    public static void ToggleVisible() => _visible = !_visible;
 
     internal const float MinWidth = 400;
     internal const float MinHeight = 300;
@@ -34,6 +37,12 @@ public static class EditorRoot
         var (height, setHeight) = UseState(600f);
         var (zoom, setZoom) = UseState(1.0f);
         var (isFullscreen, setIsFullscreen) = UseState(false);
+
+        // Saved windowed position/size for fullscreen restore
+        var (savedX, setSavedX) = UseState(60f);
+        var (savedY, setSavedY) = UseState(40f);
+        var (savedW, setSavedW) = UseState(900f);
+        var (savedH, setSavedH) = UseState(600f);
 
         // File/editor state
         var (openFile, setOpenFile) = UseState<string?>(null);
@@ -89,6 +98,10 @@ public static class EditorRoot
         {
             if (!isFullscreen)
             {
+                // Save current windowed state
+                setSavedX(posX); setSavedY(posY);
+                setSavedW(width); setSavedH(height);
+                // Go fullscreen
                 setPosX(FullscreenMargin);
                 setPosY(FullscreenMargin);
                 setWidth(UnityEngine.Screen.width - FullscreenMargin * 2);
@@ -96,11 +109,15 @@ public static class EditorRoot
             }
             else
             {
-                setPosX(60f); setPosY(40f);
-                setWidth(900f); setHeight(600f);
+                // Restore saved windowed state
+                setPosX(savedX); setPosY(savedY);
+                setWidth(savedW); setHeight(savedH);
             }
             setIsFullscreen(!isFullscreen);
         };
+
+        // Hidden — all hooks called above, return empty div
+        if (!_visible) return Div();
 
         var fileName = openFile != null ? Path.GetFileName(openFile) : "No file open";
 
