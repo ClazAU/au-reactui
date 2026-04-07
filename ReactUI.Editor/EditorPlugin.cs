@@ -39,6 +39,9 @@ public partial class EditorPlugin : BasePlugin
 
     private void OnUpdate()
     {
+        // Resize tracking
+        ResizeTracker.Tick();
+
         if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F10))
         {
             _visible = !_visible;
