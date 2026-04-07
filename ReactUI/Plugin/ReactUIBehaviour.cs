@@ -70,9 +70,10 @@ public class ReactUIBehaviour : MonoBehaviour
             if (Animation.TransitionEngine.HasActiveAnimations)
                 Core.Scheduler.ScheduleRenderAll();
 
+            Rendering.UIScale.Update();
             var roots = Core.Scheduler.GetRoots();
             for (int i = 0; i < roots.Count; i++)
-                Layout.LayoutEngine.ComputeLayout(roots[i], Screen.width, Screen.height);
+                Layout.LayoutEngine.ComputeLayout(roots[i], Rendering.UIScale.LogicalWidth, Rendering.UIScale.LogicalHeight);
 
             Core.Scheduler.FlushPostLayoutCallbacks();
         }

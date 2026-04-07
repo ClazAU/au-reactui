@@ -224,7 +224,7 @@ public static class TextRendererTests
         s.fontStyle = FontStyle.Bold;
         GUI.Label(new Rect(10, y, 800, 20), $"{label}: {result}", s);
         GL.PushMatrix();
-        GL.LoadPixelMatrix(0, Screen.width, Screen.height, 0);
+        GL.LoadPixelMatrix(0, UIScale.LogicalWidth, UIScale.LogicalHeight, 0);
 
         return y + 20;
     }

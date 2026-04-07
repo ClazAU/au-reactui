@@ -108,8 +108,8 @@ public static class EditorRoot
                 // Go fullscreen
                 setPosX(FullscreenMargin);
                 setPosY(FullscreenMargin);
-                setWidth(UnityEngine.Screen.width - FullscreenMargin * 2);
-                setHeight(UnityEngine.Screen.height - FullscreenMargin * 2);
+                setWidth(ReactUI.Rendering.UIScale.LogicalWidth - FullscreenMargin * 2);
+                setHeight(ReactUI.Rendering.UIScale.LogicalHeight - FullscreenMargin * 2);
             }
             else
             {
@@ -262,8 +262,9 @@ public static class ResizeTracker
     public static void Start(float currentW, float currentH, Action<float> setW, Action<float> setH)
     {
         _active = true;
-        _startMouseX = UnityEngine.Input.mousePosition.x;
-        _startMouseY = UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y;
+        float s = ReactUI.Rendering.UIScale.Factor;
+        _startMouseX = UnityEngine.Input.mousePosition.x / s;
+        _startMouseY = (UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y) / s;
         _startW = currentW;
         _startH = currentH;
         _setW = setW;
@@ -275,8 +276,9 @@ public static class ResizeTracker
         if (!_active) return;
         if (!UnityEngine.Input.GetMouseButton(0)) { _active = false; return; }
 
-        float dx = UnityEngine.Input.mousePosition.x - _startMouseX;
-        float dy = (UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y) - _startMouseY;
+        float s = ReactUI.Rendering.UIScale.Factor;
+        float dx = UnityEngine.Input.mousePosition.x / s - _startMouseX;
+        float dy = (UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y) / s - _startMouseY;
 
         _setW?.Invoke(Math.Max(EditorRoot.MinWidth, _startW + dx));
         _setH?.Invoke(Math.Max(EditorRoot.MinHeight, _startH + dy));

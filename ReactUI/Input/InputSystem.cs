@@ -83,8 +83,9 @@ public static class InputSystem
     /// </summary>
     public static void StartDrag(float currentX, float currentY, Action<float> setX, Action<float> setY)
     {
-        float mx = UnityEngine.Input.mousePosition.x;
-        float my = UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y;
+        float s = Rendering.UIScale.Factor;
+        float mx = UnityEngine.Input.mousePosition.x / s;
+        float my = (UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y) / s;
         _dragOffsetX = mx - currentX;
         _dragOffsetY = my - currentY;
         _dragSetX = setX;
@@ -100,8 +101,9 @@ public static class InputSystem
     public static void ProcessInputAll(System.Collections.Generic.List<Core.UINode> roots)
     {
         var mousePos = UnityEngine.Input.mousePosition;
-        float mx = mousePos.x;
-        float my = UnityEngine.Screen.height - mousePos.y;
+        float s = Rendering.UIScale.Factor;
+        float mx = mousePos.x / s;
+        float my = (UnityEngine.Screen.height - mousePos.y) / s;
 
         // Find the topmost hit across all roots (last root = highest z-order)
         Core.UINode? hit = null;
@@ -118,8 +120,9 @@ public static class InputSystem
     {
         if (root == null) return;
         var mousePos = UnityEngine.Input.mousePosition;
-        float mx = mousePos.x;
-        float my = UnityEngine.Screen.height - mousePos.y;
+        float s = Rendering.UIScale.Factor;
+        float mx = mousePos.x / s;
+        float my = (UnityEngine.Screen.height - mousePos.y) / s;
         var hit = HitTesting.HitTest(root, mx, my);
         ProcessInputWithHit(hit, mx, my);
     }
@@ -209,7 +212,7 @@ public static class InputSystem
             FocusManager.SetFocus(hit);
 
             // Click-to-position cursor in input elements
-            if (hit.Type == "input")
+            if (hit != null && hit.Type == "input")
             {
                 PositionCursorFromClick(hit, mx);
             }

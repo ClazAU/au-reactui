@@ -26,7 +26,7 @@ public static class LayoutDebugOverlay
         _lineMaterial!.SetPass(0);
 
         GL.PushMatrix();
-        GL.LoadPixelMatrix(0, Screen.width, Screen.height, 0);
+        GL.LoadPixelMatrix(0, UIScale.LogicalWidth, UIScale.LogicalHeight, 0);
 
         DrawNodeRecursive(root, 0);
 
@@ -90,6 +90,9 @@ public static class LayoutDebugOverlay
         if (node.Type != "__component")
         {
             GL.PopMatrix();
+            float s = UIScale.Factor;
+            var prevMatrix = GUI.matrix;
+            GUI.matrix = UnityEngine.Matrix4x4.TRS(UnityEngine.Vector3.zero, UnityEngine.Quaternion.identity, new UnityEngine.Vector3(s, s, 1f));
             var labelStyle = new GUIStyle();
             labelStyle.fontSize = 9;
             labelStyle.normal.textColor = new Color(1f, 1f, 0f, 0.8f);
@@ -102,8 +105,9 @@ public static class LayoutDebugOverlay
                 label = $"\"{t}\"";
             }
             GUI.Label(new Rect(rect.X, rect.Y - 12, 200, 14), label, labelStyle);
+            GUI.matrix = prevMatrix;
             GL.PushMatrix();
-            GL.LoadPixelMatrix(0, Screen.width, Screen.height, 0);
+            GL.LoadPixelMatrix(0, UIScale.LogicalWidth, UIScale.LogicalHeight, 0);
             _lineMaterial!.SetPass(0);
         }
 
