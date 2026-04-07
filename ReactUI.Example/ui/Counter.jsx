@@ -1,13 +1,14 @@
 function Counter() {
   const [count, setCount] = useState(0);
   const [name, setName] = useState('');
+  const drag = useDrag(40, 40);
 
   useEffect(() => {
     log('Count changed to ' + count);
   }, [count]);
 
   return (
-    <div className="panel" style={{ position: 'absolute', inset: [40, null, null, 40], width: 420 }}>
+    <div className="panel" style={{ position: 'absolute', inset: [drag.y, null, null, drag.x], width: 420, cursor: 'grab' }}>
       <div className="title">ReactUI Counter</div>
 
       <div className="section">

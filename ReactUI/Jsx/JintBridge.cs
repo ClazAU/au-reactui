@@ -127,8 +127,9 @@ public class JintBridge
         engine.SetValue("useRef", new Func<JsValue, JsValue>(UseRef));
         engine.SetValue("useCallback", new Func<JsValue, JsValue, JsValue>(UseCallback));
 
-        // Shared state (C# ↔ JSX)
+        // Custom hooks
         engine.SetValue("useShared", new Func<JsValue, JsValue>(UseShared));
+        engine.SetValue("useDrag", new Func<JsValue, JsValue, JsValue>(UseDrag));
 
         // Expose the csharp.xxx() function bridge
         BuildCSharpObject(engine);
@@ -439,6 +440,42 @@ public class JintBridge
         }, depArray);
 
         return JsValue.FromObject(_engine, result);
+    }
+
+    // ─── useDrag ────────────────────────
+
+    /// <summary>
+    /// useDrag(initialX, initialY) → { x, y, setX, setY }
+    /// Registers the component as draggable. Returns current position and setters.
+    /// </summary>
+    private JsValue UseDrag(JsValue initialX, JsValue initialY)
+    {
+        var ix = (float)initialX.AsNumber();
+        var iy = (float)initialY.AsNumber();
+
+        var (posX, setPosX) = UseStateHook.UseState(ix);
+        var (posY, setPosY) = UseStateHook.UseState(iy);
+
+        var capturedX = (float)(double)posX!;
+        var capturedY = (float)(double)posY!;
+        var setX = (Action<object>)setPosX;
+        var setY = (Action<object>)setPosY;
+
+        var ctx = HooksRuntime.Current;
+        if (ctx != null)
+        {
+            Input.InputSystem.RegisterDraggable(
+                ctx.ComponentId,
+                () => capturedX, () => capturedY,
+                v => setX(v), v => setY(v));
+        }
+
+        var result = new JsObject(_engine);
+        result.FastSetDataProperty("x", JsValue.FromObject(_engine, capturedX));
+        result.FastSetDataProperty("y", JsValue.FromObject(_engine, capturedY));
+        result.FastSetDataProperty("setX", JsValue.FromObject(_engine, new Action<JsValue>(v => setX((float)v.AsNumber()))));
+        result.FastSetDataProperty("setY", JsValue.FromObject(_engine, new Action<JsValue>(v => setY((float)v.AsNumber()))));
+        return result;
     }
 
     // ─── Shared state (C# ↔ JSX) ────────────────────────
