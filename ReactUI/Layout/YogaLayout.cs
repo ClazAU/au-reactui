@@ -141,12 +141,26 @@ public static class YogaLayout
         if (!IsNaN(innerW)) innerW = Max(innerW, 0);
         if (!IsNaN(innerH)) innerH = Max(innerH, 0);
 
+        // For overflow:scroll containers, children are not constrained on the main axis.
+        // They size to content and the container clips/scrolls the overflow.
+        float scrollInnerW = innerW;
+        float scrollInnerH = innerH;
+        if (node.Overflow == Overflow.Scroll)
+        {
+            // Column scroll: don't constrain height (children can exceed container)
+            if (!IsRow(node.FlexDirection))
+                scrollInnerH = float.NaN;
+            // Row scroll: don't constrain width
+            else
+                scrollInnerW = float.NaN;
+        }
+
         bool crossDefinite = row
             ? (!IsNaN(node.Height) || heightMode == MeasureMode.Exactly)
             : (!IsNaN(node.Width) || widthMode == MeasureMode.Exactly);
 
-        float innerMain = row ? innerW : innerH;
-        float innerCross = row ? innerH : innerW;
+        float innerMain = row ? scrollInnerW : scrollInnerH;
+        float innerCross = row ? scrollInnerH : scrollInnerW;
 
         // Separate children into relative (in-flow) and absolute
         var relChildren = new List<LayoutNode>();
