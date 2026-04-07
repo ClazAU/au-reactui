@@ -19,6 +19,26 @@ public static class InputSystem
     // Slider drag state
     static Core.UINode? _slidingNode;
 
+    // Cursor position per input node (keyed by UINode reference)
+    static readonly System.Collections.Generic.Dictionary<Core.UINode, int> _cursorPositions = new();
+
+    /// <summary>Get the cursor position for an input node. Defaults to end of text.</summary>
+    public static int GetCursorPosition(Core.UINode node)
+    {
+        if (_cursorPositions.TryGetValue(node, out var pos))
+            return pos;
+        // Default: end of text
+        if (node.LastVNode?.Props.TryGetValue("value", out var val) == true && val is string s)
+            return s.Length;
+        return 0;
+    }
+
+    /// <summary>Set cursor position for an input node.</summary>
+    public static void SetCursorPosition(Core.UINode node, int pos)
+    {
+        _cursorPositions[node] = pos;
+    }
+
     // Registered draggable panels: componentId → callbacks
     static readonly System.Collections.Generic.Dictionary<int, DragTarget> _dragTargets = new();
 
@@ -130,6 +150,11 @@ public static class InputSystem
             _activeNode = hit;
             if (hit != null)
             {
+                var hitKey = hit.Key ?? "null";
+                var hitType = hit.Type;
+                var hasClick = HasEventHandler(hit, "onClick");
+                Plugin.ReactUIPlugin.Logger.LogInfo($"[ReactUI Input] MouseDown on type={hitType} key={hitKey} hasOnClick={hasClick}");
+
                 hit.IsActive = true;
                 FireEvent(hit, "onMouseDown");
 
@@ -182,6 +207,12 @@ public static class InputSystem
             }
 
             FocusManager.SetFocus(hit);
+
+            // Click-to-position cursor in input elements
+            if (hit.Type == "input")
+            {
+                PositionCursorFromClick(hit, mx);
+            }
         }
 
         // Mouse up
@@ -192,7 +223,10 @@ public static class InputSystem
                 _activeNode.IsActive = false;
                 FireEvent(_activeNode, "onMouseUp");
                 if (_activeNode == hit && !_isDragging && _slidingNode == null)
+                {
+                    Plugin.ReactUIPlugin.Logger.LogInfo($"[ReactUI Input] onClick fired on type={_activeNode.Type} key={_activeNode.Key ?? "null"}");
                     FireEvent(_activeNode, "onClick");
+                }
                 _activeNode = null;
             }
             _isDragging = false;
@@ -326,6 +360,53 @@ public static class InputSystem
         }
     }
 
+    /// <summary>
+    /// Position the cursor in an input based on click X coordinate.
+    /// Uses GUIStyle.CalcSize to measure text widths.
+    /// </summary>
+    static void PositionCursorFromClick(Core.UINode node, float clickX)
+    {
+        if (node.LastVNode == null) return;
+
+        string text = "";
+        if (node.LastVNode.Props.TryGetValue("value", out var valObj) && valObj is string s)
+            text = s;
+
+        if (text.Length == 0) { SetCursorPosition(node, 0); return; }
+
+        var style = node.ComputedStyle;
+        float padL = 0;
+        if (style?.Padding != null)
+            padL = style.Padding.Value.Left.Value;
+
+        float textStartX = node.ScreenRect.X + padL;
+        float relX = clickX - textStartX;
+
+        if (relX <= 0) { SetCursorPosition(node, 0); return; }
+
+        var guiStyle = new UnityEngine.GUIStyle();
+        guiStyle.fontSize = (int)(style?.FontSize ?? 14f);
+        guiStyle.fontStyle = (style?.FontWeight ?? 400) >= 700
+            ? UnityEngine.FontStyle.Bold : UnityEngine.FontStyle.Normal;
+
+        // Binary search for the character position closest to the click
+        int best = text.Length;
+        for (int i = 1; i <= text.Length; i++)
+        {
+            float w = guiStyle.CalcSize(new UnityEngine.GUIContent(text.Substring(0, i))).x;
+            if (w > relX)
+            {
+                // Check if click is closer to i-1 or i
+                float prevW = i > 1
+                    ? guiStyle.CalcSize(new UnityEngine.GUIContent(text.Substring(0, i - 1))).x
+                    : 0;
+                best = (relX - prevW < w - relX) ? i - 1 : i;
+                break;
+            }
+        }
+        SetCursorPosition(node, best);
+    }
+
     static void ProcessKeyboard(Core.UINode node)
     {
         // Tab key for focus navigation
@@ -378,35 +459,71 @@ public static class InputSystem
 
             if (onChange == null) return;
 
-            // Handle backspace
-            if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.Backspace))
-            {
-                if (currentValue.Length > 0)
-                {
-                    try { onChange(currentValue.Substring(0, currentValue.Length - 1)); }
-                    catch (System.Exception) { }
-                }
-                return;
-            }
+            // Get/clamp cursor position
+            int cursor = GetCursorPosition(node);
+            if (cursor > currentValue.Length) cursor = currentValue.Length;
+            if (cursor < 0) cursor = 0;
 
-            // Handle typed characters
-            string inputString = UnityEngine.Input.inputString;
-            if (!string.IsNullOrEmpty(inputString))
+            // Arrow keys move cursor
+            if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.LeftArrow))
             {
-                // Filter out control characters
-                var sb = new System.Text.StringBuilder(currentValue);
-                foreach (char c in inputString)
+                if (cursor > 0) SetCursorPosition(node, cursor - 1);
+                // Don't return — still fire onKeyDown below
+            }
+            else if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.RightArrow))
+            {
+                if (cursor < currentValue.Length) SetCursorPosition(node, cursor + 1);
+            }
+            // Home/End
+            else if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.Home))
+            {
+                SetCursorPosition(node, 0);
+            }
+            else if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.End))
+            {
+                SetCursorPosition(node, currentValue.Length);
+            }
+            // Delete key
+            else if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.Delete))
+            {
+                if (cursor < currentValue.Length)
                 {
-                    if (c == '\b') continue; // backspace already handled
-                    if (c == '\n' || c == '\r') continue; // ignore enter
-                    if (c < 32) continue; // ignore other control chars
-                    sb.Append(c);
+                    string newValue = currentValue.Remove(cursor, 1);
+                    try { onChange(newValue); } catch { }
+                    // cursor stays at same position
                 }
-                string newValue = sb.ToString();
-                if (newValue != currentValue)
+            }
+            // Backspace at cursor position
+            else if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.Backspace))
+            {
+                if (cursor > 0)
                 {
-                    try { onChange(newValue); }
-                    catch (System.Exception) { }
+                    string newValue = currentValue.Remove(cursor - 1, 1);
+                    SetCursorPosition(node, cursor - 1);
+                    try { onChange(newValue); } catch { }
+                }
+            }
+            else
+            {
+                // Handle typed characters — insert at cursor position
+                string inputString = UnityEngine.Input.inputString;
+                if (!string.IsNullOrEmpty(inputString))
+                {
+                    var sb = new System.Text.StringBuilder();
+                    foreach (char c in inputString)
+                    {
+                        if (c == '\b') continue;
+                        if (c == '\n' || c == '\r') continue;
+                        if (c < 32) continue;
+                        sb.Append(c);
+                    }
+                    string typed = sb.ToString();
+                    if (typed.Length > 0)
+                    {
+                        string newValue = currentValue.Insert(cursor, typed);
+                        SetCursorPosition(node, cursor + typed.Length);
+                        try { onChange(newValue); } catch { }
+                    }
                 }
             }
 

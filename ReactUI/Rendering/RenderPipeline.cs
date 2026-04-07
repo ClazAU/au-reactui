@@ -232,12 +232,17 @@ public class RenderPipeline
                 if (node.LastVNode.Props.TryGetValue("value", out var v2) && v2 is string s2)
                     cursorText = s2;
 
+                // Get cursor position from InputSystem
+                int cursorPos = ReactUI.Input.InputSystem.GetCursorPosition(node);
+                if (cursorPos > cursorText.Length) cursorPos = cursorText.Length;
+                string textBeforeCursor = cursorPos > 0 ? cursorText.Substring(0, cursorPos) : "";
+
                 var cursorStyle = new UnityEngine.GUIStyle();
                 cursorStyle.fontSize = (int)(style.FontSize ?? 14f);
                 cursorStyle.fontStyle = (style.FontWeight ?? 400) >= 700 ? UnityEngine.FontStyle.Bold : UnityEngine.FontStyle.Normal;
                 float cursorX = rect.X + (style.Padding?.Left ?? 0);
-                if (cursorText.Length > 0)
-                    cursorX += cursorStyle.CalcSize(new UnityEngine.GUIContent(cursorText)).x;
+                if (textBeforeCursor.Length > 0)
+                    cursorX += cursorStyle.CalcSize(new UnityEngine.GUIContent(textBeforeCursor)).x;
 
                 float cursorY = rect.Y + (style.Padding?.Top ?? 0) + 2;
                 float cursorH = (style.FontSize ?? 14f);
