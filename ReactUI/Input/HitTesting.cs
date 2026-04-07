@@ -16,6 +16,11 @@ public static class HitTesting
 
     static Core.UINode? HitTestRecursive(Core.UINode node, float x, float y)
     {
+        // If this node has pointer-events:none, skip it and all descendants
+        var pe = node.ComputedStyle?.PointerEvents;
+        if (pe == false)
+            return null;
+
         // Check children in reverse order (last child drawn on top = higher priority)
         for (int i = node.Children.Count - 1; i >= 0; i--)
         {
@@ -25,12 +30,7 @@ public static class HitTesting
 
         // Check self: point must be within both ScreenRect and ClipRect
         if (node.ScreenRect.Contains(x, y) && node.ClipRect.Contains(x, y))
-        {
-            // Respect PointerEvents style (null defaults to true)
-            var pe = node.ComputedStyle?.PointerEvents;
-            if (pe != false)
-                return node;
-        }
+            return node;
 
         return null;
     }
