@@ -88,6 +88,7 @@ public static class CodeEditor
             var lineNumStyle = new S
             {
                 Width = Style.StyleValue.Px(lineNumWidth),
+                FlexShrink = 0,
                 TextAlign = Style.TextAlign.Right,
                 FontSize = fontSize,
                 Color = Style.UIColor.FromHex("#444"),
@@ -132,6 +133,7 @@ public static class CodeEditor
             var editArea = Div(new S
             {
                 FlexGrow = 1,
+                FlexShrink = 0,
                 Position = Style.PositionType.Relative,
             },
                 UI.Input(lineText, onLineChange, inputStyle),
@@ -147,6 +149,7 @@ public static class CodeEditor
                 FlexDirection = Style.FlexDirection.Row,
                 AlignItems = Style.AlignItems.Center,
                 MinHeight = Style.StyleValue.Px(lineHeight),
+                FlexShrink = 0, // don't compress lines — scroll instead
             },
                 Text((lineIdx + 1).ToString(), lineNumStyle),
                 editArea
