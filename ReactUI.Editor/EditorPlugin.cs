@@ -39,8 +39,8 @@ public partial class EditorPlugin : BasePlugin
 
     private void OnUpdate()
     {
-        // Resize tracking
-        ResizeTracker.Tick();
+        // Drag/resize tracking
+        WindowDragResize.Tick();
 
         if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.F10))
         {

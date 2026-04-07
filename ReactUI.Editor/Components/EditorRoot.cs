@@ -10,7 +10,7 @@ namespace ReactUI.Editor.Components;
 
 /// <summary>
 /// Root component of the in-game JSX editor.
-/// Draggable, resizable, with zoom control.
+/// Draggable from toolbar, resizable from bottom-right corner, with zoom.
 /// </summary>
 public static class EditorRoot
 {
@@ -28,22 +28,12 @@ public static class EditorRoot
 
     private static Core.VNode RenderEditor()
     {
-        // Position and size state
         var (posX, setPosX) = UseState(60f);
         var (posY, setPosY) = UseState(40f);
         var (width, setWidth) = UseState(900f);
         var (height, setHeight) = UseState(600f);
         var (zoom, setZoom) = UseState(1.0f);
-
-        // Register draggable for the title bar
-        var ctx = HooksRuntime.Current;
-        if (ctx != null)
-        {
-            var cx = posX; var cy = posY;
-            ReactUI.Input.InputSystem.RegisterDraggable(
-                ctx.ComponentId,
-                () => cx, () => cy, setPosX, setPosY);
-        }
+        var (isFullscreen, setIsFullscreen) = UseState(false);
 
         // File/editor state
         var (openFile, setOpenFile) = UseState<string?>(null);
@@ -79,8 +69,7 @@ public static class EditorRoot
         Action onSave = () =>
         {
             if (openFile == null) return;
-            var fullPath = Path.Combine(_watchDir, openFile);
-            EditorFileService.WriteFile(fullPath, string.Join("\n", lines));
+            EditorFileService.WriteFile(Path.Combine(_watchDir, openFile), string.Join("\n", lines));
             setDirty(false);
         };
 
@@ -88,18 +77,14 @@ public static class EditorRoot
 
         Action onNew = () =>
         {
-            var name = "NewComponent";
-            var path = EditorFileService.CreateNewFile(_watchDir, name);
+            var path = EditorFileService.CreateNewFile(_watchDir, "NewComponent");
             setFiles(EditorFileService.ListFiles(_watchDir));
             onFileSelect(Path.GetRelativePath(_watchDir, path).Replace('\\', '/'));
         };
 
-        // Zoom handlers
         Action zoomIn = () => setZoom(Math.Min(zoom + 0.1f, MaxZoom));
         Action zoomOut = () => setZoom(Math.Max(zoom - 0.1f, MinZoom));
 
-        // Fullscreen toggle
-        var (isFullscreen, setIsFullscreen) = UseState(false);
         Action toggleFullscreen = () =>
         {
             if (!isFullscreen)
@@ -111,16 +96,13 @@ public static class EditorRoot
             }
             else
             {
-                setPosX(60f);
-                setPosY(40f);
-                setWidth(900f);
-                setHeight(600f);
+                setPosX(60f); setPosY(40f);
+                setWidth(900f); setHeight(600f);
             }
             setIsFullscreen(!isFullscreen);
         };
 
         var fileName = openFile != null ? Path.GetFileName(openFile) : "No file open";
-        var zoomPct = (int)(zoom * 100);
 
         return Div(new S
             {
@@ -136,54 +118,24 @@ public static class EditorRoot
                 Overflow = Style.Overflow.Hidden,
             },
 
-            // Toolbar (drag handle)
-            Div(new S
-                {
-                    FlexDirection = Style.FlexDirection.Row,
-                    Padding = new Style.EdgeValues(6, 12),
-                    Gap = 6,
-                    Background = Style.UIColor.FromHex("#16161e"),
-                    AlignItems = Style.AlignItems.Center,
-                    Cursor = Style.CursorType.Grab,
-                },
-                Button("New", onNew, ClassName("toolbar-btn")),
-                Button(dirty ? "Save *" : "Save", onSave, ClassName("toolbar-btn")),
-                Button("Run", onRun, ClassName("toolbar-btn toolbar-btn-primary")),
-                Button(autoRun ? "Auto: ON" : "Auto: OFF", () => setAutoRun(!autoRun),
-                    ClassName(autoRun ? "toolbar-btn toolbar-btn-active" : "toolbar-btn")),
-
-                // Spacer
-                Div(new S { FlexGrow = 1 }),
-
-                // Zoom controls
-                Button("-", zoomOut, ClassName("toolbar-btn")),
-                Text($"{zoomPct}%", new S { FontSize = 11, Color = Style.UIColor.FromHex("#888"), Width = Style.StyleValue.Px(36), TextAlign = Style.TextAlign.Center }),
-                Button("+", zoomIn, ClassName("toolbar-btn")),
-                Button(isFullscreen ? "Exit FS" : "Fullscreen", toggleFullscreen, ClassName("toolbar-btn")),
-
-                // Title
-                Text(fileName + (dirty ? " *" : ""), new S
-                {
-                    FontSize = 12, FontWeight = 600,
-                    Color = Style.UIColor.FromHex("#7c3aed"),
-                    Padding = new Style.EdgeValues(0, 0, 0, 8),
-                })
-            ),
+            // Toolbar — this is the drag handle
+            DragBar(fileName, dirty, autoRun, zoom, isFullscreen,
+                onNew, onSave, onRun, () => setAutoRun(!autoRun),
+                zoomOut, zoomIn, toggleFullscreen,
+                posX, posY, setPosX, setPosY),
 
             // Main area
             Div(ClassName("main-area"),
                 FileBrowser.Render(files, openFile, onFileSelect),
-
                 Div(ClassName("editor-area"),
                     CodeEditor.Render(lines, onCodeChange, SyntaxHighlighter.DetectLanguage(openFile), zoom),
-
                     error != null
                         ? Div(ClassName("error-panel"), Text(error, ClassName("error-text")))
                         : Div()
                 )
             ),
 
-            // Status bar with resize info
+            // Status bar
             Div(ClassName("status-bar"),
                 Text($"{lines.Length} lines", ClassName("status-text")),
                 Text(openFile ?? "", ClassName("status-text")),
@@ -192,31 +144,75 @@ public static class EditorRoot
             ),
 
             // Resize handle (bottom-right corner)
-            ResizeHandle(width, height, setWidth, setHeight)
+            ResizeCorner(width, height, setWidth, setHeight)
         );
     }
 
-    private static Core.VNode ResizeHandle(float width, float height, Action<float> setWidth, Action<float> setHeight)
+    /// <summary>Toolbar that doubles as a drag handle via onMouseDown.</summary>
+    private static Core.VNode DragBar(
+        string fileName, bool dirty, bool autoRun, float zoom, bool isFullscreen,
+        Action onNew, Action onSave, Action onRun, Action onToggleAutoRun,
+        Action zoomOut, Action zoomIn, Action toggleFullscreen,
+        float posX, float posY, Action<float> setPosX, Action<float> setPosY)
     {
-        // A small draggable corner indicator
+        var node = Div(new S
+            {
+                FlexDirection = Style.FlexDirection.Row,
+                Padding = new Style.EdgeValues(6, 12),
+                Gap = 6,
+                Background = Style.UIColor.FromHex("#16161e"),
+                AlignItems = Style.AlignItems.Center,
+                Cursor = Style.CursorType.Grab,
+            },
+            Button("New", onNew, ClassName("toolbar-btn")),
+            Button(dirty ? "Save *" : "Save", onSave, ClassName("toolbar-btn")),
+            Button("Run", onRun, ClassName("toolbar-btn toolbar-btn-primary")),
+            Button(autoRun ? "Auto: ON" : "Auto: OFF", onToggleAutoRun,
+                ClassName(autoRun ? "toolbar-btn toolbar-btn-active" : "toolbar-btn")),
+            Div(new S { FlexGrow = 1 }),
+            Button("-", zoomOut, ClassName("toolbar-btn")),
+            Text($"{(int)(zoom * 100)}%", new S { FontSize = 11, Color = Style.UIColor.FromHex("#888"), Width = Style.StyleValue.Px(36), TextAlign = Style.TextAlign.Center }),
+            Button("+", zoomIn, ClassName("toolbar-btn")),
+            Button(isFullscreen ? "Exit FS" : "Fullscreen", toggleFullscreen, ClassName("toolbar-btn")),
+            Text(fileName + (dirty ? " *" : ""), new S
+            {
+                FontSize = 12, FontWeight = 600,
+                Color = Style.UIColor.FromHex("#7c3aed"),
+                Padding = new Style.EdgeValues(0, 0, 0, 8),
+            })
+        );
+
+        // Register drag on mousedown of the toolbar background
+        var cx = posX; var cy = posY;
+        node.Props["onMouseDown"] = (Action)(() =>
+        {
+            WindowDragResize.StartDrag(cx, cy, setPosX, setPosY);
+        });
+
+        return node;
+    }
+
+    private static Core.VNode ResizeCorner(float width, float height, Action<float> setWidth, Action<float> setHeight)
+    {
         var node = Div(new S
         {
             Position = Style.PositionType.Absolute,
             Inset = new Style.EdgeValues(float.NaN, 0, 0, float.NaN),
-            Width = Style.StyleValue.Px(16),
-            Height = Style.StyleValue.Px(16),
+            Width = Style.StyleValue.Px(18),
+            Height = Style.StyleValue.Px(18),
             Cursor = Style.CursorType.Pointer,
             Opacity = 0.4f,
             Hover = new S { Opacity = 0.8f },
         },
-            // Diagonal lines to indicate resize
-            Text("⋱", new S { FontSize = 12, Color = Style.UIColor.FromHex("#888"), TextAlign = Style.TextAlign.Center })
+            Text("\u22f1", new S { FontSize = 12, Color = Style.UIColor.FromHex("#888"), TextAlign = Style.TextAlign.Center })
         );
+
+        var cw = width; var ch = height;
         node.Props["onMouseDown"] = (Action)(() =>
         {
-            // Start resize tracking
-            ResizeTracker.Start(width, height, setWidth, setHeight);
+            WindowDragResize.StartResize(cw, ch, setWidth, setHeight);
         });
+
         return node;
     }
 
@@ -225,60 +221,71 @@ public static class EditorRoot
         try
         {
             var source = string.Join("\n", lines);
-            var transformed = Jsx.JsxTransformer.Transform(source);
-            var prepared = Jsx.JintBridge.PrepareSource(transformed);
+            Jsx.JsxTransformer.Transform(source);
             setError(null);
         }
-        catch (Exception ex)
-        {
-            setError(ex.Message);
-        }
+        catch (Exception ex) { setError(ex.Message); }
     }
 }
 
 /// <summary>
-/// Tracks mouse delta for resize operations.
-/// Called from Update via ReactUIBehaviour.OnUpdate.
+/// Unified drag/resize tracker. Only one mode active at a time.
 /// </summary>
-public static class ResizeTracker
+public static class WindowDragResize
 {
-    private static bool _active;
+    private enum Mode { None, Drag, Resize }
+    private static Mode _mode;
     private static float _startMouseX, _startMouseY;
-    private static float _startWidth, _startHeight;
-    private static Action<float>? _setWidth;
-    private static Action<float>? _setHeight;
+    private static float _startValX, _startValY;
+    private static Action<float>? _setX;
+    private static Action<float>? _setY;
 
-    public static void Start(float currentWidth, float currentHeight, Action<float> setWidth, Action<float> setHeight)
+    public static void StartDrag(float currentX, float currentY, Action<float> setX, Action<float> setY)
     {
-        _active = true;
+        _mode = Mode.Drag;
         _startMouseX = UnityEngine.Input.mousePosition.x;
         _startMouseY = UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y;
-        _startWidth = currentWidth;
-        _startHeight = currentHeight;
-        _setWidth = setWidth;
-        _setHeight = setHeight;
+        _startValX = currentX;
+        _startValY = currentY;
+        _setX = setX;
+        _setY = setY;
     }
 
-    /// <summary>Call from Update loop.</summary>
+    public static void StartResize(float currentW, float currentH, Action<float> setW, Action<float> setH)
+    {
+        _mode = Mode.Resize;
+        _startMouseX = UnityEngine.Input.mousePosition.x;
+        _startMouseY = UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y;
+        _startValX = currentW;
+        _startValY = currentH;
+        _setX = setW;
+        _setY = setH;
+    }
+
     public static void Tick()
     {
-        if (!_active) return;
+        if (_mode == Mode.None) return;
 
         if (!UnityEngine.Input.GetMouseButton(0))
         {
-            _active = false;
+            _mode = Mode.None;
             return;
         }
 
-        float mouseX = UnityEngine.Input.mousePosition.x;
-        float mouseY = UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y;
-        float dx = mouseX - _startMouseX;
-        float dy = mouseY - _startMouseY;
+        float mx = UnityEngine.Input.mousePosition.x;
+        float my = UnityEngine.Screen.height - UnityEngine.Input.mousePosition.y;
+        float dx = mx - _startMouseX;
+        float dy = my - _startMouseY;
 
-        float newWidth = Math.Max(EditorRoot.MinWidth, _startWidth + dx);
-        float newHeight = Math.Max(EditorRoot.MinHeight, _startHeight + dy);
-
-        _setWidth?.Invoke(newWidth);
-        _setHeight?.Invoke(newHeight);
+        if (_mode == Mode.Drag)
+        {
+            _setX?.Invoke(_startValX + dx);
+            _setY?.Invoke(_startValY + dy);
+        }
+        else if (_mode == Mode.Resize)
+        {
+            _setX?.Invoke(Math.Max(EditorRoot.MinWidth, _startValX + dx));
+            _setY?.Invoke(Math.Max(EditorRoot.MinHeight, _startValY + dy));
+        }
     }
 }
