@@ -11,25 +11,50 @@ public static class HitTesting
     /// </summary>
     public static Core.UINode? HitTest(Core.UINode root, float x, float y)
     {
-        return HitTestRecursive(root, x, y);
+        return HitTestRecursive(root, x, y, 0, 0);
     }
 
-    static Core.UINode? HitTestRecursive(Core.UINode node, float x, float y)
+    static Core.UINode? HitTestRecursive(Core.UINode node, float x, float y, float scrollOffsetX, float scrollOffsetY)
     {
         // If this node has pointer-events:none, skip it and all descendants
         var pe = node.ComputedStyle?.PointerEvents;
         if (pe == false)
             return null;
 
+        // The rendered position of this node accounts for accumulated scroll offset
+        float renderX = node.ScreenRect.X - scrollOffsetX;
+        float renderY = node.ScreenRect.Y - scrollOffsetY;
+        float renderW = node.ScreenRect.Width;
+        float renderH = node.ScreenRect.Height;
+
+        // Accumulate scroll offset for children of scroll containers
+        float childScrollX = scrollOffsetX;
+        float childScrollY = scrollOffsetY;
+        if (node.ComputedStyle?.Overflow == Style.Overflow.Scroll)
+        {
+            childScrollX += node.ScrollOffsetX;
+            childScrollY += node.ScrollOffsetY;
+        }
+
+        // For scroll/hidden overflow containers, children are clipped to the container's rendered rect
+        bool isClipping = node.ComputedStyle?.Overflow == Style.Overflow.Scroll
+                       || node.ComputedStyle?.Overflow == Style.Overflow.Hidden;
+        if (isClipping)
+        {
+            // If the point is outside this container's rendered rect, no child can be hit
+            if (x < renderX || x > renderX + renderW || y < renderY || y > renderY + renderH)
+                return null;
+        }
+
         // Check children in reverse order (last child drawn on top = higher priority)
         for (int i = node.Children.Count - 1; i >= 0; i--)
         {
-            var hit = HitTestRecursive(node.Children[i], x, y);
+            var hit = HitTestRecursive(node.Children[i], x, y, childScrollX, childScrollY);
             if (hit != null) return hit;
         }
 
-        // Check self: point must be within both ScreenRect and ClipRect
-        if (node.ScreenRect.Contains(x, y) && node.ClipRect.Contains(x, y))
+        // Check self: use scroll-adjusted position
+        if (x >= renderX && x <= renderX + renderW && y >= renderY && y <= renderY + renderH)
             return node;
 
         return null;

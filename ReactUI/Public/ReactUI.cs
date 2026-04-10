@@ -90,8 +90,14 @@ public static class UI
     public static VNode Button(string label, Action onClick, Style.Style? style = null) =>
         ButtonElement.Create(label, onClick, style);
 
+    public static VNode Button(string label, Action onClick, Action onRightClick, Style.Style? style = null) =>
+        ButtonElement.Create(label, onClick, onRightClick, style);
+
     public static VNode Button(Action onClick, Style.Style? style, params VNode[] children) =>
         ButtonElement.Create(onClick, style, children);
+
+    public static VNode Button(Action onClick, Action onRightClick, Style.Style? style, params VNode[] children) =>
+        ButtonElement.Create(onClick, onRightClick, style, children);
 
     public static VNode Input(string value, Action<string> onChange, Style.Style? style = null, string placeholder = "") =>
         InputElement.Create(value, onChange, style, placeholder);

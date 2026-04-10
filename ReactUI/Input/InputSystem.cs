@@ -10,6 +10,7 @@ public static class InputSystem
 {
     static Core.UINode? _hoveredNode;
     static Core.UINode? _activeNode;
+    static Core.UINode? _rightClickNode;
 
     // Drag state
     static bool _isDragging;
@@ -147,7 +148,7 @@ public static class InputSystem
             }
         }
 
-        // Mouse down
+        // Mouse down (left)
         if (UnityEngine.Input.GetMouseButtonDown(0))
         {
             _activeNode = hit;
@@ -168,7 +169,7 @@ public static class InputSystem
                     _slidingNode = sliderNode;
                     UpdateSliderValue(sliderNode, mx);
                 }
-                else if (!HasEventHandler(hit, "onClick") && !_isDragging)
+                else if (!HasEventHandler(hit, "onClick") && !HasEventHandler(hit, "onRightClick") && !_isDragging)
                 {
                     // Check drag handles first (element-level, by key)
                     bool foundHandle = false;
@@ -218,7 +219,7 @@ public static class InputSystem
             }
         }
 
-        // Mouse up
+        // Mouse up (left)
         if (UnityEngine.Input.GetMouseButtonUp(0))
         {
             if (_activeNode != null)
@@ -236,6 +237,24 @@ public static class InputSystem
             _dragSetX = null;
             _dragSetY = null;
             _slidingNode = null;
+        }
+
+        // Right-click
+        if (UnityEngine.Input.GetMouseButtonDown(1))
+        {
+            _rightClickNode = hit;
+            if (hit != null)
+                FireEvent(hit, "onRightMouseDown");
+        }
+        if (UnityEngine.Input.GetMouseButtonUp(1))
+        {
+            if (_rightClickNode != null)
+            {
+                FireEvent(_rightClickNode, "onRightMouseUp");
+                if (_rightClickNode == hit)
+                    FireEvent(_rightClickNode, "onRightClick");
+                _rightClickNode = null;
+            }
         }
 
         // Drag tracking
@@ -282,6 +301,25 @@ public static class InputSystem
         return null;
     }
 
+    /// <summary>
+    /// Compute the accumulated scroll offset for a node by walking up the tree.
+    /// </summary>
+    static (float x, float y) GetAccumulatedScrollOffset(Core.UINode node)
+    {
+        float sx = 0, sy = 0;
+        var current = node.Parent;
+        while (current != null)
+        {
+            if (current.ComputedStyle?.Overflow == Style.Overflow.Scroll)
+            {
+                sx += current.ScrollOffsetX;
+                sy += current.ScrollOffsetY;
+            }
+            current = current.Parent;
+        }
+        return (sx, sy);
+    }
+
     static void UpdateSliderValue(Core.UINode slider, float mouseX)
     {
         var vnode = slider.LastVNode;
@@ -291,10 +329,11 @@ public static class InputSystem
         if (vnode.Props.TryGetValue("min", out var mnObj) && mnObj is float mnf) min = mnf;
         if (vnode.Props.TryGetValue("max", out var mxObj) && mxObj is float mxf) max = mxf;
 
+        var (scrollX, _) = GetAccumulatedScrollOffset(slider);
         var rect = slider.ScreenRect;
         float padL = slider.ComputedStyle?.Padding?.Left ?? 0;
         float padR = slider.ComputedStyle?.Padding?.Right ?? 0;
-        float trackX = rect.X + padL;
+        float trackX = rect.X - scrollX + padL;
         float trackW = rect.Width - padL - padR;
 
         float pct = trackW > 0 ? (mouseX - trackX) / trackW : 0;
