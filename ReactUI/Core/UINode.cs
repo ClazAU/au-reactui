@@ -34,6 +34,9 @@ public class UINode
     public float ScrollOffsetX;
     public float ScrollOffsetY;
 
+    /// <summary>Total content height for scroll containers (set during render traversal).</summary>
+    public float ContentHeight;
+
     // --- Render data ---
     /// <summary>Screen-space rectangle after layout.</summary>
     public Rect ScreenRect;

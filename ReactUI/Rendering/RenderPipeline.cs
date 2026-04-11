@@ -222,32 +222,60 @@ public class RenderPipeline
                 });
             }
 
-            // Draw cursor when focused
+            // Draw selection highlight and cursor when focused
             if (node.IsFocused)
             {
                 string cursorText = "";
                 if (node.LastVNode.Props.TryGetValue("value", out var v2) && v2 is string s2)
                     cursorText = s2;
 
-                // Get cursor position from InputSystem
+                var cursorStyle = new UnityEngine.GUIStyle();
+                cursorStyle.fontSize = (int)(style.FontSize ?? 14f);
+                cursorStyle.fontStyle = (style.FontWeight ?? 400) >= 700 ? UnityEngine.FontStyle.Bold : UnityEngine.FontStyle.Normal;
+
+                float textBaseX = rect.X + (style.Padding?.Left ?? 0);
+                float textBaseY = rect.Y + (style.Padding?.Top ?? 0) + 2;
+                float textH = (style.FontSize ?? 14f);
+
+                // Draw selection highlight
+                var selection = ReactUI.Input.InputSystem.GetSelection(node);
+                if (selection != null)
+                {
+                    int selStart = System.Math.Min(selection.Value.Start, cursorText.Length);
+                    int selEnd = System.Math.Min(selection.Value.End, cursorText.Length);
+
+                    float selStartX = textBaseX;
+                    if (selStart > 0)
+                        selStartX += cursorStyle.CalcSize(new UnityEngine.GUIContent(cursorText.Substring(0, selStart))).x;
+
+                    float selEndX = textBaseX;
+                    if (selEnd > 0)
+                        selEndX += cursorStyle.CalcSize(new UnityEngine.GUIContent(cursorText.Substring(0, selEnd))).x;
+
+                    _commands.Add(new DrawCommand
+                    {
+                        Type = DrawType.SdfRect,
+                        Rect = new Core.Rect(selStartX, textBaseY, selEndX - selStartX, textH),
+                        ClipRect = clipRect,
+                        ZOrder = zOrder + 1,
+                        BackgroundColor = new Style.UIColor(0.26f, 0.52f, 0.96f, 0.35f),
+                        Opacity = opacity,
+                    });
+                }
+
+                // Draw cursor
                 int cursorPos = ReactUI.Input.InputSystem.GetCursorPosition(node);
                 if (cursorPos > cursorText.Length) cursorPos = cursorText.Length;
                 string textBeforeCursor = cursorPos > 0 ? cursorText.Substring(0, cursorPos) : "";
 
-                var cursorStyle = new UnityEngine.GUIStyle();
-                cursorStyle.fontSize = (int)(style.FontSize ?? 14f);
-                cursorStyle.fontStyle = (style.FontWeight ?? 400) >= 700 ? UnityEngine.FontStyle.Bold : UnityEngine.FontStyle.Normal;
-                float cursorX = rect.X + (style.Padding?.Left ?? 0);
+                float cursorX = textBaseX;
                 if (textBeforeCursor.Length > 0)
                     cursorX += cursorStyle.CalcSize(new UnityEngine.GUIContent(textBeforeCursor)).x;
-
-                float cursorY = rect.Y + (style.Padding?.Top ?? 0) + 2;
-                float cursorH = (style.FontSize ?? 14f);
 
                 _commands.Add(new DrawCommand
                 {
                     Type = DrawType.SdfRect,
-                    Rect = new Core.Rect(cursorX, cursorY, 1.5f, cursorH),
+                    Rect = new Core.Rect(cursorX, textBaseY, 1.5f, textH),
                     ClipRect = clipRect,
                     ZOrder = zOrder + 2,
                     BackgroundColor = (style.Color.HasValue && style.Color.Value.A > 0.01f)
@@ -351,6 +379,9 @@ public class RenderPipeline
                 float childBottom = childRect.Y + childRect.Height - node.ScreenRect.Y;
                 if (childBottom > contentHeight) contentHeight = childBottom;
             }
+
+            // Store content height for input system scrollbar interaction
+            node.ContentHeight = contentHeight;
 
             // Clamp scroll offset
             float maxScroll = System.Math.Max(0, contentHeight - rect.Height);

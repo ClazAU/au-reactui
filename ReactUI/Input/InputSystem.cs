@@ -20,8 +20,15 @@ public static class InputSystem
     // Slider drag state
     static Core.UINode? _slidingNode;
 
+    // Scrollbar drag state
+    static Core.UINode? _scrollbarDragNode;
+    static float _scrollbarDragOffset; // mouse Y offset from thumb top when drag started
+
     // Cursor position per input node (keyed by UINode reference)
     static readonly System.Collections.Generic.Dictionary<Core.UINode, int> _cursorPositions = new();
+
+    // Selection anchor per input node — when set, text between anchor and cursor is selected
+    static readonly System.Collections.Generic.Dictionary<Core.UINode, int> _selectionAnchors = new();
 
     /// <summary>Get the cursor position for an input node. Defaults to end of text.</summary>
     public static int GetCursorPosition(Core.UINode node)
@@ -38,6 +45,64 @@ public static class InputSystem
     public static void SetCursorPosition(Core.UINode node, int pos)
     {
         _cursorPositions[node] = pos;
+    }
+
+    /// <summary>Get the selection range for an input node, if any. Returns (start, end) where start &lt; end.</summary>
+    public static (int Start, int End)? GetSelection(Core.UINode node)
+    {
+        if (!_selectionAnchors.TryGetValue(node, out var anchor)) return null;
+        int cursor = GetCursorPosition(node);
+        if (anchor == cursor) return null;
+        return anchor < cursor ? (anchor, cursor) : (cursor, anchor);
+    }
+
+    /// <summary>Clear any active text selection on the node.</summary>
+    public static void ClearSelection(Core.UINode node)
+    {
+        _selectionAnchors.Remove(node);
+    }
+
+    /// <summary>Find the next word boundary from pos in the given direction (-1 = left, +1 = right).</summary>
+    static int FindWordBoundary(string text, int pos, int direction)
+    {
+        if (direction < 0)
+        {
+            if (pos <= 0) return 0;
+            int i = pos - 1;
+            // Skip whitespace/punctuation
+            while (i > 0 && !char.IsLetterOrDigit(text[i])) i--;
+            // Skip word characters
+            while (i > 0 && char.IsLetterOrDigit(text[i - 1])) i--;
+            return i;
+        }
+        else
+        {
+            if (pos >= text.Length) return text.Length;
+            int i = pos;
+            // Skip whitespace/punctuation
+            while (i < text.Length && !char.IsLetterOrDigit(text[i])) i++;
+            // Skip word characters
+            while (i < text.Length && char.IsLetterOrDigit(text[i])) i++;
+            return i;
+        }
+    }
+
+    /// <summary>Get selected text string, or empty if no selection.</summary>
+    static string GetSelectedText(Core.UINode node, string text)
+    {
+        var sel = GetSelection(node);
+        if (sel == null) return "";
+        return text.Substring(sel.Value.Start, sel.Value.End - sel.Value.Start);
+    }
+
+    /// <summary>Delete selected text and return new string + cursor pos. Returns null if no selection.</summary>
+    static (string NewText, int Cursor)? DeleteSelection(Core.UINode node, string text)
+    {
+        var sel = GetSelection(node);
+        if (sel == null) return null;
+        string result = text.Remove(sel.Value.Start, sel.Value.End - sel.Value.Start);
+        ClearSelection(node);
+        return (result, sel.Value.Start);
     }
 
     // Registered draggable panels: componentId → callbacks
@@ -151,6 +216,34 @@ public static class InputSystem
         // Mouse down (left)
         if (UnityEngine.Input.GetMouseButtonDown(0))
         {
+            // Check scrollbar hit first — scrollbar takes priority over content clicks
+            Core.UINode? scrollbarHit = hit != null ? FindScrollbarHit(hit, mx, my) : null;
+            if (scrollbarHit != null)
+            {
+                var geo = GetScrollbarGeometry(scrollbarHit)!.Value;
+                if (my >= geo.ThumbY && my <= geo.ThumbY + geo.ThumbH)
+                {
+                    // Clicked on thumb — start dragging
+                    _scrollbarDragNode = scrollbarHit;
+                    _scrollbarDragOffset = my - geo.ThumbY;
+                }
+                else
+                {
+                    // Clicked on track — jump scroll to that position
+                    float clickRatio = (my - geo.TrackY) / geo.TrackH;
+                    scrollbarHit.ScrollOffsetY = clickRatio * geo.MaxScroll;
+                    if (scrollbarHit.ScrollOffsetY < 0) scrollbarHit.ScrollOffsetY = 0;
+                    if (scrollbarHit.ScrollOffsetY > geo.MaxScroll) scrollbarHit.ScrollOffsetY = geo.MaxScroll;
+
+                    // Start dragging from the new thumb position so user can keep dragging
+                    _scrollbarDragNode = scrollbarHit;
+                    var newGeo = GetScrollbarGeometry(scrollbarHit)!.Value;
+                    _scrollbarDragOffset = newGeo.ThumbH / 2; // center thumb on click
+                }
+                // Don't process normal click logic
+            }
+            else
+            {
             _activeNode = hit;
             if (hit != null)
             {
@@ -215,8 +308,10 @@ public static class InputSystem
             // Click-to-position cursor in input elements
             if (hit != null && hit.Type == "input")
             {
+                ClearSelection(hit);
                 PositionCursorFromClick(hit, mx);
             }
+            } // end else (not scrollbar)
         }
 
         // Mouse up (left)
@@ -237,6 +332,7 @@ public static class InputSystem
             _dragSetX = null;
             _dragSetY = null;
             _slidingNode = null;
+            _scrollbarDragNode = null;
         }
 
         // Right-click
@@ -270,6 +366,21 @@ public static class InputSystem
             UpdateSliderValue(_slidingNode, mx);
         }
 
+        // Scrollbar thumb drag tracking
+        if (_scrollbarDragNode != null && UnityEngine.Input.GetMouseButton(0))
+        {
+            var geo = GetScrollbarGeometry(_scrollbarDragNode);
+            if (geo != null)
+            {
+                var g = geo.Value;
+                // Convert mouse Y to scroll position
+                float thumbTop = my - _scrollbarDragOffset;
+                float scrollRatio = (thumbTop - g.TrackY) / (g.TrackH - g.ThumbH);
+                scrollRatio = System.Math.Max(0, System.Math.Min(1, scrollRatio));
+                _scrollbarDragNode.ScrollOffsetY = scrollRatio * g.MaxScroll;
+            }
+        }
+
         // Scroll
         float scroll = UnityEngine.Input.mouseScrollDelta.y;
         if (scroll != 0 && hit != null)
@@ -288,6 +399,53 @@ public static class InputSystem
             ProcessKeyboard(FocusManager.Focused);
 
         CursorManager.Update(_hoveredNode);
+    }
+
+    /// <summary>
+    /// Compute scrollbar geometry for a scroll container. Returns null if no scrollbar visible.
+    /// Matches the constants in RenderPipeline scrollbar drawing.
+    /// </summary>
+    static (float TrackX, float TrackY, float TrackW, float TrackH,
+            float ThumbY, float ThumbH, float ContentHeight, float MaxScroll)?
+        GetScrollbarGeometry(Core.UINode node)
+    {
+        if (node.ComputedStyle?.Overflow != Style.Overflow.Scroll) return null;
+        var rect = node.ScreenRect;
+        float contentHeight = node.ContentHeight;
+        if (contentHeight <= rect.Height) return null;
+
+        float trackW = 6;
+        float trackX = rect.Right - trackW - 2;
+        float trackY = rect.Y + 2;
+        float trackH = rect.Height - 4;
+
+        float visibleRatio = rect.Height / contentHeight;
+        float thumbH = System.Math.Max(trackH * visibleRatio, 20);
+        float maxScroll = System.Math.Max(1, contentHeight - rect.Height);
+        float thumbY = trackY + (trackH - thumbH) * (node.ScrollOffsetY / maxScroll);
+
+        return (trackX, trackY, trackW, trackH, thumbY, thumbH, contentHeight, maxScroll);
+    }
+
+    /// <summary>
+    /// Find the nearest scrollable ancestor (or self) that has a visible scrollbar at (mx, my).
+    /// </summary>
+    static Core.UINode? FindScrollbarHit(Core.UINode node, float mx, float my)
+    {
+        var current = node;
+        while (current != null)
+        {
+            var geo = GetScrollbarGeometry(current);
+            if (geo != null)
+            {
+                var g = geo.Value;
+                if (mx >= g.TrackX && mx <= g.TrackX + g.TrackW &&
+                    my >= g.TrackY && my <= g.TrackY + g.TrackH)
+                    return current;
+            }
+            current = current.Parent;
+        }
+        return null;
     }
 
     static Core.UINode? FindAncestorOfType(Core.UINode node, string type)
@@ -506,48 +664,217 @@ public static class InputSystem
             if (cursor > currentValue.Length) cursor = currentValue.Length;
             if (cursor < 0) cursor = 0;
 
-            // Arrow keys move cursor
-            if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.LeftArrow))
+            bool ctrl = UnityEngine.Input.GetKey(UnityEngine.KeyCode.LeftControl) ||
+                        UnityEngine.Input.GetKey(UnityEngine.KeyCode.RightControl);
+            bool shift = UnityEngine.Input.GetKey(UnityEngine.KeyCode.LeftShift) ||
+                         UnityEngine.Input.GetKey(UnityEngine.KeyCode.RightShift);
+            bool hasSelection = GetSelection(node) != null;
+
+            // Helper: start or extend selection when shift is held
+            void EnsureSelectionAnchor()
             {
-                if (cursor > 0) SetCursorPosition(node, cursor - 1);
-                // Don't return — still fire onKeyDown below
+                if (!_selectionAnchors.ContainsKey(node))
+                    _selectionAnchors[node] = cursor;
+            }
+
+            // Ctrl+A — Select all
+            if (ctrl && UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.A))
+            {
+                _selectionAnchors[node] = 0;
+                SetCursorPosition(node, currentValue.Length);
+            }
+            // Ctrl+C — Copy
+            else if (ctrl && UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.C))
+            {
+                string selected = GetSelectedText(node, currentValue);
+                if (selected.Length > 0)
+                    UnityEngine.GUIUtility.systemCopyBuffer = selected;
+            }
+            // Ctrl+X — Cut
+            else if (ctrl && UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.X))
+            {
+                string selected = GetSelectedText(node, currentValue);
+                if (selected.Length > 0)
+                {
+                    UnityEngine.GUIUtility.systemCopyBuffer = selected;
+                    var del = DeleteSelection(node, currentValue);
+                    if (del != null)
+                    {
+                        SetCursorPosition(node, del.Value.Cursor);
+                        try { onChange(del.Value.NewText); } catch { }
+                    }
+                }
+            }
+            // Ctrl+V — Paste
+            else if (ctrl && UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.V))
+            {
+                string clipboard = UnityEngine.GUIUtility.systemCopyBuffer ?? "";
+                // Strip control characters
+                var sb = new System.Text.StringBuilder();
+                foreach (char c in clipboard)
+                {
+                    if (c == '\n' || c == '\r' || c == '\t') { sb.Append(' '); continue; }
+                    if (c >= 32) sb.Append(c);
+                }
+                string paste = sb.ToString();
+                if (paste.Length > 0)
+                {
+                    // Delete selection first if any
+                    var del = DeleteSelection(node, currentValue);
+                    if (del != null)
+                    {
+                        currentValue = del.Value.NewText;
+                        cursor = del.Value.Cursor;
+                    }
+                    string newValue = currentValue.Insert(cursor, paste);
+                    SetCursorPosition(node, cursor + paste.Length);
+                    ClearSelection(node);
+                    try { onChange(newValue); } catch { }
+                }
+            }
+            // Ctrl+Backspace — Delete word left
+            else if (ctrl && UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.Backspace))
+            {
+                if (hasSelection)
+                {
+                    var del = DeleteSelection(node, currentValue);
+                    if (del != null)
+                    {
+                        SetCursorPosition(node, del.Value.Cursor);
+                        try { onChange(del.Value.NewText); } catch { }
+                    }
+                }
+                else if (cursor > 0)
+                {
+                    int boundary = FindWordBoundary(currentValue, cursor, -1);
+                    string newValue = currentValue.Remove(boundary, cursor - boundary);
+                    SetCursorPosition(node, boundary);
+                    try { onChange(newValue); } catch { }
+                }
+            }
+            // Ctrl+Delete — Delete word right
+            else if (ctrl && UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.Delete))
+            {
+                if (hasSelection)
+                {
+                    var del = DeleteSelection(node, currentValue);
+                    if (del != null)
+                    {
+                        SetCursorPosition(node, del.Value.Cursor);
+                        try { onChange(del.Value.NewText); } catch { }
+                    }
+                }
+                else if (cursor < currentValue.Length)
+                {
+                    int boundary = FindWordBoundary(currentValue, cursor, 1);
+                    string newValue = currentValue.Remove(cursor, boundary - cursor);
+                    try { onChange(newValue); } catch { }
+                }
+            }
+            // Ctrl+Left — Move cursor one word left
+            else if (ctrl && UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.LeftArrow))
+            {
+                if (shift) EnsureSelectionAnchor();
+                else ClearSelection(node);
+                SetCursorPosition(node, FindWordBoundary(currentValue, cursor, -1));
+            }
+            // Ctrl+Right — Move cursor one word right
+            else if (ctrl && UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.RightArrow))
+            {
+                if (shift) EnsureSelectionAnchor();
+                else ClearSelection(node);
+                SetCursorPosition(node, FindWordBoundary(currentValue, cursor, 1));
+            }
+            // Arrow keys (with optional Shift for selection)
+            else if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.LeftArrow))
+            {
+                if (shift)
+                {
+                    EnsureSelectionAnchor();
+                    if (cursor > 0) SetCursorPosition(node, cursor - 1);
+                }
+                else if (hasSelection)
+                {
+                    var sel = GetSelection(node)!.Value;
+                    SetCursorPosition(node, sel.Start);
+                    ClearSelection(node);
+                }
+                else if (cursor > 0)
+                {
+                    SetCursorPosition(node, cursor - 1);
+                }
             }
             else if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.RightArrow))
             {
-                if (cursor < currentValue.Length) SetCursorPosition(node, cursor + 1);
+                if (shift)
+                {
+                    EnsureSelectionAnchor();
+                    if (cursor < currentValue.Length) SetCursorPosition(node, cursor + 1);
+                }
+                else if (hasSelection)
+                {
+                    var sel = GetSelection(node)!.Value;
+                    SetCursorPosition(node, sel.End);
+                    ClearSelection(node);
+                }
+                else if (cursor < currentValue.Length)
+                {
+                    SetCursorPosition(node, cursor + 1);
+                }
             }
-            // Home/End
+            // Home/End (with optional Shift)
             else if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.Home))
             {
+                if (shift) EnsureSelectionAnchor();
+                else ClearSelection(node);
                 SetCursorPosition(node, 0);
             }
             else if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.End))
             {
+                if (shift) EnsureSelectionAnchor();
+                else ClearSelection(node);
                 SetCursorPosition(node, currentValue.Length);
             }
-            // Delete key
+            // Delete key — delete selection or char at cursor
             else if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.Delete))
             {
-                if (cursor < currentValue.Length)
+                if (hasSelection)
+                {
+                    var del = DeleteSelection(node, currentValue);
+                    if (del != null)
+                    {
+                        SetCursorPosition(node, del.Value.Cursor);
+                        try { onChange(del.Value.NewText); } catch { }
+                    }
+                }
+                else if (cursor < currentValue.Length)
                 {
                     string newValue = currentValue.Remove(cursor, 1);
                     try { onChange(newValue); } catch { }
-                    // cursor stays at same position
                 }
             }
-            // Backspace at cursor position
+            // Backspace — delete selection or char before cursor
             else if (UnityEngine.Input.GetKeyDown(UnityEngine.KeyCode.Backspace))
             {
-                if (cursor > 0)
+                if (hasSelection)
+                {
+                    var del = DeleteSelection(node, currentValue);
+                    if (del != null)
+                    {
+                        SetCursorPosition(node, del.Value.Cursor);
+                        try { onChange(del.Value.NewText); } catch { }
+                    }
+                }
+                else if (cursor > 0)
                 {
                     string newValue = currentValue.Remove(cursor - 1, 1);
                     SetCursorPosition(node, cursor - 1);
                     try { onChange(newValue); } catch { }
                 }
             }
-            else
+            else if (!ctrl)
             {
-                // Handle typed characters — insert at cursor position
+                // Handle typed characters — insert at cursor position (replaces selection)
                 string inputString = UnityEngine.Input.inputString;
                 if (!string.IsNullOrEmpty(inputString))
                 {
@@ -562,8 +889,16 @@ public static class InputSystem
                     string typed = sb.ToString();
                     if (typed.Length > 0)
                     {
+                        // Delete selection first if any
+                        var del = DeleteSelection(node, currentValue);
+                        if (del != null)
+                        {
+                            currentValue = del.Value.NewText;
+                            cursor = del.Value.Cursor;
+                        }
                         string newValue = currentValue.Insert(cursor, typed);
                         SetCursorPosition(node, cursor + typed.Length);
+                        ClearSelection(node);
                         try { onChange(newValue); } catch { }
                     }
                 }
