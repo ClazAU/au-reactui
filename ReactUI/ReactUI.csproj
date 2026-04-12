@@ -19,7 +19,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Jint" Version="4.2.1" />
+        <PackageReference Include="Jint" Version="4.2.1" GeneratePathProperty="true" />
+        <PackageReference Include="Acornima" Version="1.1.1" GeneratePathProperty="true" />
+        <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.34" PrivateAssets="all" />
         <PackageReference Include="Reactor" Version="2.3.1" />
         <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.735" Private="false" ExcludeAssets="runtime;native" />
         <PackageReference Include="AmongUs.GameLibs.Steam" Version="2025.11.18" PrivateAssets="all" />
@@ -27,7 +29,27 @@
         <PackageReference Include="BepInEx.IL2CPP.MSBuild" Version="2.1.0-rc.1" PrivateAssets="all" ExcludeAssets="runtime" />
     </ItemGroup>
 
-    <Target Name="Copy" AfterTargets="Build" Condition="'$(AmongUs)' != ''">
+    <!-- Merge Jint, Acornima into ReactUI.dll -->
+    <Target Name="MergeAssemblies" AfterTargets="Build">
+        <ItemGroup>
+            <MergeInput Include="$(TargetPath)" />
+            <MergeInput Include="$(PkgJint)/lib/netstandard2.1/Jint.dll" />
+            <MergeInput Include="$(PkgAcornima)/lib/net6.0/Acornima.dll" />
+            <ILRepackSearchDir Include="$(TargetDir)" />
+            <ILRepackSearchDir Include="$(NuGetPackageRoot)bepinex.core/6.0.0-be.735/lib/netstandard2.0/" />
+            <ILRepackSearchDir Include="$(NuGetPackageRoot)bepinex.unity.il2cpp/6.0.0-be.735/lib/netstandard2.1/" />
+            <ILRepackSearchDir Include="$(NuGetPackageRoot)reactor/2.3.1/lib/net6.0/" />
+            <ILRepackSearchDir Include="$(AmongUs)/BepInEx/core/" />
+            <ILRepackSearchDir Include="$(AmongUs)/BepInEx/interop/" />
+        </ItemGroup>
+        <MakeDir Directories="$(TargetDir)ilrepack_tmp" />
+        <ILRepack InputAssemblies="@(MergeInput)" LibraryPath="@(ILRepackSearchDir)" TargetKind="Dll" OutputFile="$(TargetDir)ilrepack_tmp/ReactUI.dll" Parallel="true" Internalize="false" AllowDuplicateResources="true" />
+        <Delete Files="$(TargetPath)" />
+        <Move SourceFiles="$(TargetDir)ilrepack_tmp/ReactUI.dll" DestinationFiles="$(TargetPath)" />
+        <RemoveDir Directories="$(TargetDir)ilrepack_tmp" />
+    </Target>
+
+    <Target Name="Deploy" AfterTargets="MergeAssemblies" Condition="'$(AmongUs)' != ''">
         <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AmongUs)/BepInEx/plugins/" UseSymboliclinksIfPossible="true" />
     </Target>
 </Project>

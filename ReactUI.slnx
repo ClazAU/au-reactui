@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="ReactUI.Editor/ReactUI.Editor.csproj" />
+  <Project Path="ReactUI.Example/ReactUI.Example.csproj" />
+  <Project Path="ReactUI.Tests/ReactUI.Tests.csproj" />
+  <Project Path="ReactUI/ReactUI.csproj" />
+</Solution>
