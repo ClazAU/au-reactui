@@ -176,8 +176,18 @@ public static class YogaLayout
         }
 
         // ---- Flex layout for relative children ----
+        // For wrap containers, use available main-axis space as the wrap constraint
+        // even when innerMain is NaN (AtMost mode). This ensures items wrap correctly
+        // during intrinsic sizing passes.
+        float wrapMain = innerMain;
+        if (node.FlexWrap == FlexWrap.Wrap && IsNaN(wrapMain))
+        {
+            float availMain = row ? availableWidth - padH : availableHeight - padV;
+            if (!IsNaN(availMain) && availMain > 0)
+                wrapMain = availMain;
+        }
         // Build flex lines
-        var lines = BuildFlexLines(relChildren, node, row, innerMain, innerCross);
+        var lines = BuildFlexLines(relChildren, node, row, wrapMain, innerCross);
 
         // Process each line: resolve sizes, grow/shrink, then position
         float totalLineCross = 0;
@@ -203,7 +213,12 @@ public static class YogaLayout
             containerMain = maxLineMain;
         }
         float containerCross = innerCross;
+        bool hasExplicitCross = row
+            ? (!IsNaN(node.Height) || !IsNaN(node.HeightPercent))
+            : (!IsNaN(node.Width) || !IsNaN(node.WidthPercent));
         if (IsNaN(containerCross))
+            containerCross = totalLineCross;
+        else if (node.FlexWrap == FlexWrap.Wrap && lines.Count > 1 && !hasExplicitCross)
             containerCross = totalLineCross;
 
         // If single line and container has definite cross size, expand line to fill it
@@ -224,15 +239,18 @@ public static class YogaLayout
         }
 
         // Compute final node size
+        // For wrap containers without an explicit cross dimension, size to content
+        // even when nodeH/nodeW was resolved from Exactly mode.
+        bool wrapCrossAuto = node.FlexWrap == FlexWrap.Wrap && lines.Count > 1 && !hasExplicitCross;
         float finalW, finalH;
         if (row)
         {
             finalW = IsNaN(nodeW) ? containerMain + padH : nodeW;
-            finalH = IsNaN(nodeH) ? containerCross + padV : nodeH;
+            finalH = (IsNaN(nodeH) || wrapCrossAuto) ? containerCross + padV : nodeH;
         }
         else
         {
-            finalW = IsNaN(nodeW) ? containerCross + padH : nodeW;
+            finalW = (IsNaN(nodeW) || wrapCrossAuto) ? containerCross + padH : nodeW;
             finalH = IsNaN(nodeH) ? containerMain + padV : nodeH;
         }
         finalW = Clamp(finalW, node.MinWidth, node.MaxWidth);
