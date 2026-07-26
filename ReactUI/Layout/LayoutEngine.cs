@@ -104,6 +104,12 @@ public static class LayoutEngine
             };
         }
 
+        // Toggle switches have a fixed intrinsic size unless styled explicitly
+        if (uiNode.Type == "toggle")
+        {
+            ln.MeasureFunc = (maxWidth, widthMode, maxHeight, heightMode) => (34, 18);
+        }
+
         // Input elements need a measure function for minimum text height
         if (uiNode.Type == "input")
         {

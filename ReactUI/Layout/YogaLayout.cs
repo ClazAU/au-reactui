@@ -186,15 +186,30 @@ public static class YogaLayout
             if (!IsNaN(availMain) && availMain > 0)
                 wrapMain = availMain;
         }
+
+        // When auto-sizing under an AtMost constraint, keep the available cross space as
+        // a soft limit for measuring children. Without it, a descendant wrap container is
+        // measured against unbounded width, reports a single-line flex basis, and that
+        // stale basis is force-applied after the final pass wraps to multiple lines —
+        // making later siblings overlap it.
+        float measureCross = innerCross;
+        if (IsNaN(measureCross))
+        {
+            var crossMode = row ? heightMode : widthMode;
+            float availCross = row ? availableHeight - padV : availableWidth - padH;
+            if (crossMode != MeasureMode.Undefined && !IsNaN(availCross) && availCross > 0)
+                measureCross = availCross;
+        }
+
         // Build flex lines
-        var lines = BuildFlexLines(relChildren, node, row, wrapMain, innerCross);
+        var lines = BuildFlexLines(relChildren, node, row, wrapMain, measureCross);
 
         // Process each line: resolve sizes, grow/shrink, then position
         float totalLineCross = 0;
         for (int li = 0; li < lines.Count; li++)
         {
             var line = lines[li];
-            ResolveFlexLine(line, node, row, innerMain, innerCross, crossDefinite);
+            ResolveFlexLine(line, node, row, innerMain, measureCross, crossDefinite);
             totalLineCross += line.CrossSize;
         }
         // Add gap between lines

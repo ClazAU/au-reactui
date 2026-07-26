@@ -339,6 +339,43 @@ public class RenderPipeline
             });
         }
 
+        // Toggle (switch) rendering: pill track + sliding knob. Style.Color is the accent.
+        if (node.Type == "toggle" && node.LastVNode?.Props != null)
+        {
+            bool on = node.LastVNode.Props.TryGetValue("value", out var togObj) && togObj is bool togVal && togVal;
+
+            var accent = style.Color ?? new Style.UIColor(0.61f, 0.32f, 0.67f, 1f);
+            var trackColor = on ? accent : new Style.UIColor(1, 1, 1, 0.15f);
+            float trackR = rect.Height / 2f;
+            _commands.Add(new DrawCommand
+            {
+                Type = DrawType.SdfRect,
+                Rect = rect,
+                ClipRect = clipRect,
+                ZOrder = zOrder + 1,
+                BackgroundColor = trackColor,
+                BorderColor = style.BorderColor ?? Style.UIColor.Transparent,
+                BorderWidth = style.BorderWidth ?? 0,
+                BorderRadiusTL = trackR, BorderRadiusTR = trackR, BorderRadiusBR = trackR, BorderRadiusBL = trackR,
+                Opacity = opacity,
+            });
+
+            float knobD = Mathf.Max(rect.Height - 4f, 2f);
+            float knobR = knobD / 2f;
+            float knobX = on ? rect.X + rect.Width - 2f - knobD : rect.X + 2f;
+            float knobY = rect.Y + (rect.Height - knobD) / 2f;
+            _commands.Add(new DrawCommand
+            {
+                Type = DrawType.SdfRect,
+                Rect = new Core.Rect(knobX, knobY, knobD, knobD),
+                ClipRect = clipRect,
+                ZOrder = zOrder + 2,
+                BackgroundColor = Style.UIColor.White,
+                BorderRadiusTL = knobR, BorderRadiusTR = knobR, BorderRadiusBR = knobR, BorderRadiusBL = knobR,
+                Opacity = opacity,
+            });
+        }
+
         // Image content
         if (node.Type == "image" && node.LastVNode?.Props != null)
         {

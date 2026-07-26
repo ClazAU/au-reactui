@@ -118,5 +118,15 @@ public static class FontManager
         return atlas.LineHeight > 0 ? atlas.LineHeight : fontSize * 1.2f;
     }
 
+    /// <summary>
+    /// Get the ascent (baseline distance from the line top) for a given font size.
+    /// </summary>
+    public static float GetAscent(float fontSize, string? fontFamily = null, int fontWeight = 400)
+    {
+        int atlasSize = Math.Clamp((int)fontSize, 8, 128);
+        var atlas = GetAtlas(fontFamily, fontWeight, atlasSize);
+        return atlas.Ascent > 0 ? atlas.Ascent : fontSize * 0.8f;
+    }
+
     public static void ClearCache() => _atlases.Clear();
 }

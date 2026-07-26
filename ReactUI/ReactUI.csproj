@@ -49,7 +49,7 @@
         <RemoveDir Directories="$(TargetDir)ilrepack_tmp" />
     </Target>
 
-    <Target Name="Deploy" AfterTargets="MergeAssemblies" Condition="'$(AmongUs)' != ''">
+    <Target Name="Deploy" AfterTargets="MergeAssemblies" Condition="'$(AmongUs)' != '' And '$(SkipDeploy)' != 'true'">
         <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AmongUs)/BepInEx/plugins/" UseSymboliclinksIfPossible="true" />
     </Target>
 </Project>

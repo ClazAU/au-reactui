@@ -51,6 +51,13 @@ public static class TextRenderer
 
         var lines = WrapLines(text, fontSize, maxWidth, fontFamily, fontWeight);
 
+        // The baseline sits ascent below the line top (plus half-leading when the line box
+        // is taller than the font's natural line height). Using lineHeight as the baseline
+        // draws every glyph a descent too low, visually misaligning text against siblings.
+        float naturalLineHeight = FontManager.GetLineHeight(fontSize, fontFamily, fontWeight);
+        float ascent = FontManager.GetAscent(fontSize, fontFamily, fontWeight);
+        float baselineOffset = ascent + (lineHeight - naturalLineHeight) * 0.5f;
+
         float cursorY = bounds.Y;
 
         for (int lineIdx = 0; lineIdx < lines.Count; lineIdx++)
@@ -87,7 +94,7 @@ public static class TextRenderer
                 if (c != ' ')
                 {
                     float glyphX = cursorX + glyph.BearingX;
-                    float glyphY = cursorY + (lineHeight - glyph.BearingY);
+                    float glyphY = cursorY + (baselineOffset - glyph.BearingY);
 
                     quads.Add(new GlyphQuad
                     {
