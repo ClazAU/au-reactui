@@ -1,0 +1,5 @@
+<!-- Intentionally empty. Its presence disables ILRepack.Lib.MSBuild.Task's default Release-only
+     target, which re-runs ILRepack on the already-merged output without our search dirs and fails
+     to resolve BepInEx.Core. Merging is done by the MergeAssemblies target in ReactUI.csproj. -->
+<Project>
+</Project>
