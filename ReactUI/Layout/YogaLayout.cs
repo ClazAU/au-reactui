@@ -209,7 +209,7 @@ public static class YogaLayout
         for (int li = 0; li < lines.Count; li++)
         {
             var line = lines[li];
-            ResolveFlexLine(line, node, row, innerMain, measureCross, crossDefinite);
+            ResolveFlexLine(line, node, row, innerMain, measureCross, crossDefinite, lines.Count > 1);
             totalLineCross += line.CrossSize;
         }
         // Add gap between lines
@@ -380,7 +380,8 @@ public static class YogaLayout
 
     // --------------------------------------------------------- resolve a flex line (grow/shrink + cross sizes)
     private static void ResolveFlexLine(FlexLine line, LayoutNode parent, bool row,
-                                        float innerMain, float innerCross, bool crossDefinite = true)
+                                        float innerMain, float innerCross, bool crossDefinite = true,
+                                        bool isMultiLine = false)
     {
         if (line.Items.Count == 0) return;
 
@@ -501,12 +502,15 @@ public static class YogaLayout
             }
 
             // Handle AlignItems.Stretch: if cross size is auto and align is stretch, fill cross
-            // Only stretch when parent's cross axis is definite (explicit size or Exactly mode)
-            // Don't stretch if child has an explicit cross size (including percent)
+            // Only stretch when parent's cross axis is definite (explicit size or Exactly mode).
+            // Don't stretch if child has an explicit cross size (including percent).
+            // With multiple wrap lines, stretch is per-line (a line is only as tall as its
+            // tallest item), so stretching to the container cross here would blow every line
+            // up to the full container size — content-size those children instead.
             AlignItems effectiveAlign = GetEffectiveAlign(child, parent);
             float crossPercent = row ? child.HeightPercent : child.WidthPercent;
             bool hasCrossSize = !IsNaN(CrossSize(child, row)) || !IsNaN(crossPercent);
-            if (effectiveAlign == AlignItems.Stretch && !hasCrossSize && !IsNaN(childCrossAvail) && crossDefinite)
+            if (effectiveAlign == AlignItems.Stretch && !hasCrossSize && !IsNaN(childCrossAvail) && crossDefinite && !isMultiLine)
             {
                 float crossMargins = CrossMarginStart(child, row) + CrossMarginEnd(child, row);
                 float stretchedCross = childCrossAvail - crossMargins;
