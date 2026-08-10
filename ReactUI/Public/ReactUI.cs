@@ -137,6 +137,7 @@ public static class UI
         PortalElement.Create(children);
 
     // --- JSX Hot Reload ---
+#if !REACTUI_MINIMAL
 
     private static Jsx.HotReloader? _hotReloader;
 
@@ -210,4 +211,6 @@ public static class UI
     /// but can also be called manually.
     /// </summary>
     public static void TickJsx() => _hotReloader?.Tick();
+
+#endif
 }

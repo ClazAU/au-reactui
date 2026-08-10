@@ -10,6 +10,12 @@
         <Author>ClazAU</Author>
     </PropertyGroup>
 
+    <!-- Minimal build (-p:Minimal=true): drops the JSX runtime and the merged Jint/Acornima. -->
+    <PropertyGroup Condition="'$(Minimal)' == 'true'">
+        <DefineConstants>$(DefineConstants);REACTUI_MINIMAL</DefineConstants>
+        <Description>React-like UI library for IL2CPP BepInEx mods — minimal build, no JSX runtime</Description>
+    </PropertyGroup>
+
     <ItemGroup>
         <InternalsVisibleTo Include="ReactUI.Tests" />
     </ItemGroup>
@@ -18,10 +24,11 @@
         <EmbeddedResource Include="Resources\*" />
     </ItemGroup>
 
+    <ItemGroup Condition="'$(Minimal)' == 'true'">
+        <Compile Remove="Jsx\**" />
+    </ItemGroup>
+
     <ItemGroup>
-        <PackageReference Include="Jint" Version="4.2.1" GeneratePathProperty="true" />
-        <PackageReference Include="Acornima" Version="1.1.1" GeneratePathProperty="true" />
-        <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.34" PrivateAssets="all" />
         <PackageReference Include="Reactor" Version="2.5.0-ci.371" />
         <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.735" Private="false" ExcludeAssets="runtime;native" />
         <PackageReference Include="AmongUs.GameLibs.Steam" Version="2026.3.31" PrivateAssets="all" />
@@ -29,8 +36,14 @@
         <PackageReference Include="BepInEx.IL2CPP.MSBuild" Version="2.1.0-rc.1" PrivateAssets="all" ExcludeAssets="runtime" />
     </ItemGroup>
 
+    <ItemGroup Condition="'$(Minimal)' != 'true'">
+        <PackageReference Include="Jint" Version="4.2.1" GeneratePathProperty="true" />
+        <PackageReference Include="Acornima" Version="1.1.1" GeneratePathProperty="true" />
+        <PackageReference Include="ILRepack.Lib.MSBuild.Task" Version="2.0.34" PrivateAssets="all" />
+    </ItemGroup>
+
     <!-- Merge Jint, Acornima into ReactUI.dll -->
-    <Target Name="MergeAssemblies" AfterTargets="Build">
+    <Target Name="MergeAssemblies" AfterTargets="Build" Condition="'$(Minimal)' != 'true'">
         <ItemGroup>
             <MergeInput Include="$(TargetPath)" />
             <MergeInput Include="$(PkgJint)/lib/netstandard2.1/Jint.dll" />
@@ -49,7 +62,7 @@
         <RemoveDir Directories="$(TargetDir)ilrepack_tmp" />
     </Target>
 
-    <Target Name="Deploy" AfterTargets="MergeAssemblies" Condition="'$(AmongUs)' != '' And '$(SkipDeploy)' != 'true'">
+    <Target Name="Deploy" AfterTargets="Build;MergeAssemblies" Condition="'$(AmongUs)' != '' And '$(SkipDeploy)' != 'true'">
         <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AmongUs)/BepInEx/plugins/" UseSymboliclinksIfPossible="true" />
     </Target>
 </Project>

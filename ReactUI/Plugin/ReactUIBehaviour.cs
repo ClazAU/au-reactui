@@ -43,8 +43,10 @@ public class ReactUIBehaviour : MonoBehaviour
             if (UnityEngine.Input.GetKeyDown(KeyCode.F11))
                 Rendering.LayoutDebugOverlay.Toggle();
 
+#if !REACTUI_MINIMAL
             // Tick JSX hot-reloader (drains file-change queue)
             UI.TickJsx();
+#endif
 
             // Fire registered update callbacks (used by editor plugin, etc.)
             OnUpdate?.Invoke();
