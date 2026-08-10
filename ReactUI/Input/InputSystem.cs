@@ -20,6 +20,9 @@ public static class InputSystem
     // Slider drag state
     static Core.UINode? _slidingNode;
 
+    // Pointer-area drag state
+    static Core.UINode? _pointerAreaNode;
+
     // Scrollbar drag state
     static Core.UINode? _scrollbarDragNode;
     static float _scrollbarDragOffset; // mouse Y offset from thumb top when drag started
@@ -255,12 +258,18 @@ public static class InputSystem
                 hit.IsActive = true;
                 FireEvent(hit, "onMouseDown");
 
-                // Priority: slider > button/onClick > panel drag
+                // Priority: slider > pointer area > button/onClick > panel drag
                 var sliderNode = FindAncestorOfType(hit, "slider");
+                var pointerAreaNode = sliderNode == null ? FindAncestorOfType(hit, "pointerarea") : null;
                 if (sliderNode != null)
                 {
                     _slidingNode = sliderNode;
                     UpdateSliderValue(sliderNode, mx);
+                }
+                else if (pointerAreaNode != null)
+                {
+                    _pointerAreaNode = pointerAreaNode;
+                    UpdatePointerArea(pointerAreaNode, mx, my);
                 }
                 else if (!HasEventHandler(hit, "onClick") && !HasEventHandler(hit, "onRightClick") && !_isDragging)
                 {
@@ -321,7 +330,7 @@ public static class InputSystem
             {
                 _activeNode.IsActive = false;
                 FireEvent(_activeNode, "onMouseUp");
-                if (_activeNode == hit && !_isDragging && _slidingNode == null)
+                if (_activeNode == hit && !_isDragging && _slidingNode == null && _pointerAreaNode == null)
                 {
                     Plugin.ReactUIPlugin.Logger.LogInfo($"[ReactUI Input] onClick fired on type={_activeNode.Type} key={_activeNode.Key ?? "null"}");
                     FireEvent(_activeNode, "onClick");
@@ -332,6 +341,7 @@ public static class InputSystem
             _dragSetX = null;
             _dragSetY = null;
             _slidingNode = null;
+            _pointerAreaNode = null;
             _scrollbarDragNode = null;
         }
 
@@ -364,6 +374,12 @@ public static class InputSystem
         if (_slidingNode != null && UnityEngine.Input.GetMouseButton(0))
         {
             UpdateSliderValue(_slidingNode, mx);
+        }
+
+        // Pointer-area drag tracking
+        if (_pointerAreaNode != null && UnityEngine.Input.GetMouseButton(0))
+        {
+            UpdatePointerArea(_pointerAreaNode, mx, my);
         }
 
         // Scrollbar thumb drag tracking
@@ -498,12 +514,35 @@ public static class InputSystem
         pct = System.Math.Max(0, System.Math.Min(1, pct));
         float newVal = min + pct * (max - min);
 
-        // Round to 1 decimal
-        newVal = (float)System.Math.Round(newVal, 1);
+        float step = 0f;
+        if (vnode.Props.TryGetValue("step", out var stObj) && stObj is float stf) step = stf;
+
+        if (step > 0)
+            newVal = min + (float) System.Math.Round((newVal - min) / step) * step;
 
         if (vnode.Props.TryGetValue("onChange", out var handler) && handler is System.Action<float> onChange)
         {
             try { onChange(newVal); }
+            catch (System.Exception) { }
+        }
+    }
+
+    static void UpdatePointerArea(Core.UINode area, float mouseX, float mouseY)
+    {
+        var vnode = area.LastVNode;
+        if (vnode == null) return;
+
+        var (scrollX, scrollY) = GetAccumulatedScrollOffset(area);
+        var rect = area.ScreenRect;
+        if (rect.Width <= 0 || rect.Height <= 0) return;
+
+        var normalized = new UnityEngine.Vector2(
+            (mouseX - (rect.X - scrollX)) / rect.Width,
+            (mouseY - (rect.Y - scrollY)) / rect.Height);
+
+        if (vnode.Props.TryGetValue("onPointer", out var handler) && handler is System.Action<UnityEngine.Vector2> onPointer)
+        {
+            try { onPointer(normalized); }
             catch (System.Exception) { }
         }
     }
