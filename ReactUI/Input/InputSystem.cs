@@ -404,9 +404,21 @@ public static class InputSystem
             var scrollable = FindScrollableAncestor(hit);
             if (scrollable != null)
             {
-                scrollable.ScrollOffsetY -= scroll * 40f;
-                if (scrollable.ScrollOffsetY < 0)
-                    scrollable.ScrollOffsetY = 0;
+                // a row container scrolls along its own axis, so the wheel drives X there
+                if (scrollable.ComputedStyle?.FlexDirection == Style.FlexDirection.Row)
+                {
+                    scrollable.ScrollOffsetX -= scroll * 40f;
+                    var maxScrollX = GetMaxScrollX(scrollable);
+                    if (scrollable.ScrollOffsetX < 0) scrollable.ScrollOffsetX = 0;
+                    if (scrollable.ScrollOffsetX > maxScrollX) scrollable.ScrollOffsetX = maxScrollX;
+                }
+                else
+                {
+                    scrollable.ScrollOffsetY -= scroll * 40f;
+                    if (scrollable.ScrollOffsetY < 0)
+                        scrollable.ScrollOffsetY = 0;
+                }
+
                 FireEvent(scrollable, "onScroll");
             }
         }
@@ -415,6 +427,20 @@ public static class InputSystem
             ProcessKeyboard(FocusManager.Focused);
 
         CursorManager.Update(_hoveredNode);
+    }
+
+    /// <summary>How far a row container can scroll before its last child is flush with the right edge.</summary>
+    static float GetMaxScrollX(Core.UINode node)
+    {
+        float contentRight = node.ScreenRect.X;
+        foreach (var child in node.Children)
+        {
+            var right = child.ScreenRect.X + child.ScreenRect.Width + node.ScrollOffsetX;
+            if (right > contentRight) contentRight = right;
+        }
+
+        var padR = node.ComputedStyle?.Padding?.Right ?? 0;
+        return System.Math.Max(0, contentRight - node.ScreenRect.X - node.ScreenRect.Width + padR);
     }
 
     /// <summary>
