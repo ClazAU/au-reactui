@@ -108,8 +108,8 @@ public static class UI
     public static VNode ScrollView(Style.Style? style = null, params VNode[] children) =>
         ScrollViewElement.Create(style, children);
 
-    public static VNode Slider(float value, Action<float> onChange, float min = 0, float max = 1, Style.Style? style = null, float step = 0f) =>
-        SliderElement.Create(value, onChange, min, max, style, step);
+    public static VNode Slider(float value, Action<float> onChange, float min = 0, float max = 1, Style.Style? style = null, float step = 0f, float thumbWidth = 14f, float thumbHeight = 14f, float thumbRadius = 7f) =>
+        SliderElement.Create(value, onChange, min, max, style, step, thumbWidth, thumbHeight, thumbRadius);
 
     /// <summary>
     /// Reports the pointer's normalized position inside the element while held — (0,0) top-left,

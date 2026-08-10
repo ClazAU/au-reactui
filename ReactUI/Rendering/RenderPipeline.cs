@@ -324,17 +324,21 @@ public class RenderPipeline
                     Opacity = opacity,
                 });
             }
-            // Thumb
-            float thumbR = 7;
-            float thumbX = trackX + trackW * pct - thumbR;
-            float thumbY = trackY + trackH / 2f - thumbR;
+            // Thumb — circle by default, or a box when the caller overrides the dimensions
+            float thumbW = 14, thumbH = 14, thumbRad = 7;
+            if (node.LastVNode.Props.TryGetValue("thumbWidth", out var twObj) && twObj is float twf) thumbW = twf;
+            if (node.LastVNode.Props.TryGetValue("thumbHeight", out var thObj) && thObj is float thf) thumbH = thf;
+            if (node.LastVNode.Props.TryGetValue("thumbRadius", out var trObj) && trObj is float trf) thumbRad = trf;
+
+            float thumbX = trackX + trackW * pct - thumbW / 2f;
+            float thumbY = trackY + trackH / 2f - thumbH / 2f;
             var thumbColor = style.Color ?? new Style.UIColor(0.61f, 0.32f, 0.67f, 1f);
             _commands.Add(new DrawCommand
             {
-                Type = DrawType.SdfRect, Rect = new Core.Rect(thumbX, thumbY, thumbR * 2, thumbR * 2),
+                Type = DrawType.SdfRect, Rect = new Core.Rect(thumbX, thumbY, thumbW, thumbH),
                 ClipRect = clipRect, ZOrder = zOrder + 3,
                 BackgroundColor = thumbColor,
-                BorderRadiusTL = thumbR, BorderRadiusTR = thumbR, BorderRadiusBR = thumbR, BorderRadiusBL = thumbR,
+                BorderRadiusTL = thumbRad, BorderRadiusTR = thumbRad, BorderRadiusBR = thumbRad, BorderRadiusBL = thumbRad,
                 Opacity = opacity,
             });
         }
