@@ -298,6 +298,8 @@ public class RenderPipeline
             float padT = style.Padding?.Top ?? 0;
             float trackW = rect.Width - padL - padR;
             float trackH = 4;
+            if (node.LastVNode.Props.TryGetValue("trackHeight", out var thkObj) && thkObj is float thkf) trackH = thkf;
+            float trackRad = trackH / 2f;
             float trackX = rect.X + padL;
             float trackY = rect.Y + padT + (rect.Height - padT - (style.Padding?.Bottom ?? 0) - trackH) / 2f;
             float pct = max > min ? (val - min) / (max - min) : 0;
@@ -308,7 +310,7 @@ public class RenderPipeline
                 Type = DrawType.SdfRect, Rect = new Core.Rect(trackX, trackY, trackW, trackH),
                 ClipRect = clipRect, ZOrder = zOrder + 1,
                 BackgroundColor = new Style.UIColor(1, 1, 1, 0.15f),
-                BorderRadiusTL = 2, BorderRadiusTR = 2, BorderRadiusBR = 2, BorderRadiusBL = 2,
+                BorderRadiusTL = trackRad, BorderRadiusTR = trackRad, BorderRadiusBR = trackRad, BorderRadiusBL = trackRad,
                 Opacity = opacity,
             });
             // Filled portion
@@ -320,7 +322,7 @@ public class RenderPipeline
                     Type = DrawType.SdfRect, Rect = new Core.Rect(trackX, trackY, trackW * pct, trackH),
                     ClipRect = clipRect, ZOrder = zOrder + 2,
                     BackgroundColor = accentColor,
-                    BorderRadiusTL = 2, BorderRadiusTR = 2, BorderRadiusBR = 2, BorderRadiusBL = 2,
+                    BorderRadiusTL = trackRad, BorderRadiusTR = trackRad, BorderRadiusBR = trackRad, BorderRadiusBL = trackRad,
                     Opacity = opacity,
                 });
             }

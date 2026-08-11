@@ -18,7 +18,8 @@ public static class SliderElement
         float step = 0f,
         float thumbWidth = 14f,
         float thumbHeight = 14f,
-        float thumbRadius = 7f)
+        float thumbRadius = 7f,
+        float trackHeight = 4f)
     {
         var node = new Core.VNode("slider") { Style = style };
         node.Props["value"] = value;
@@ -29,6 +30,7 @@ public static class SliderElement
         node.Props["thumbWidth"] = thumbWidth;
         node.Props["thumbHeight"] = thumbHeight;
         node.Props["thumbRadius"] = thumbRadius;
+        node.Props["trackHeight"] = trackHeight;
         return node;
     }
 }
