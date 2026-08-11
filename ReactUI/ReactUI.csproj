@@ -24,8 +24,22 @@
         <EmbeddedResource Include="Resources\*" />
     </ItemGroup>
 
+    <!-- Embedded build (-p:Embedded=true): no BepInEx plugin, for hosts that merge the library. -->
+    <PropertyGroup Condition="'$(Embedded)' == 'true'">
+        <DefineConstants>$(DefineConstants);REACTUI_EMBEDDED</DefineConstants>
+        <Description>React-like UI library for IL2CPP BepInEx mods — embedded build, no plugin entry point</Description>
+    </PropertyGroup>
+
     <ItemGroup Condition="'$(Minimal)' == 'true'">
         <Compile Remove="Jsx\**" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(Embedded)' == 'true'">
+        <Compile Remove="Plugin\ReactUIPlugin.cs" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(Embedded)' != 'true'">
+        <Compile Remove="Plugin\ReactUIPlugin.Embedded.cs" />
     </ItemGroup>
 
     <ItemGroup>
@@ -62,7 +76,7 @@
         <RemoveDir Directories="$(TargetDir)ilrepack_tmp" />
     </Target>
 
-    <Target Name="Deploy" AfterTargets="Build;MergeAssemblies" Condition="'$(AmongUs)' != '' And '$(SkipDeploy)' != 'true'">
+    <Target Name="Deploy" AfterTargets="Build;MergeAssemblies" Condition="'$(AmongUs)' != '' And '$(SkipDeploy)' != 'true' And '$(Embedded)' != 'true'">
         <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(AmongUs)/BepInEx/plugins/" UseSymboliclinksIfPossible="true" />
     </Target>
 </Project>
