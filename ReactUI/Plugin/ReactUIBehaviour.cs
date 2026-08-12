@@ -40,8 +40,10 @@ public class ReactUIBehaviour : MonoBehaviour
         {
             Input.KeyToggle.Poll();
 
+#if DEBUG
             if (UnityEngine.Input.GetKeyDown(KeyCode.F11))
                 Rendering.LayoutDebugOverlay.Toggle();
+#endif
 
 #if !REACTUI_MINIMAL
             // Tick JSX hot-reloader (drains file-change queue)
@@ -107,11 +109,13 @@ public class ReactUIBehaviour : MonoBehaviour
                 _renderPipeline.Execute();
             }
 
+#if DEBUG
             if (Rendering.LayoutDebugOverlay.Enabled)
             {
                 for (int i = 0; i < roots.Count; i++)
                     Rendering.LayoutDebugOverlay.Draw(roots[i]);
             }
+#endif
         }
         catch (Exception ex)
         {

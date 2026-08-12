@@ -1,3 +1,4 @@
+#if DEBUG
 using UnityEngine;
 
 namespace ReactUI.Rendering;
@@ -167,3 +168,4 @@ public static class LayoutDebugOverlay
         return _bgTex;
     }
 }
+#endif
