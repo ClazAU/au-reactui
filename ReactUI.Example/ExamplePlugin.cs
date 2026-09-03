@@ -6,6 +6,7 @@ using BepInEx.Unity.IL2CPP;
 using Reactor;
 using ReactUI;
 using ReactUI.Core;
+using ReactUI.Theme;
 using static ReactUI.UI;
 
 namespace ReactUI.Example;
@@ -19,6 +20,8 @@ public partial class ExamplePlugin : BasePlugin
     public override void Load()
     {
         Log.LogInfo("[ReactUI.Example] Load() called");
+
+        Shadcn.Register();
 
         // Mount the C# demo panel (F9 to toggle)
         try

@@ -13,6 +13,9 @@ using UnityEngine;
 public class RenderPipeline
 {
     private readonly List<DrawCommand> _commands = new();
+    private int[] _order = new int[64];
+    private DrawCommand[] _sorted = new DrawCommand[64];
+    private ZOrderComparer? _comparer;
     private readonly MeshBuilder _meshBuilder = new();
     private ClipStack _clipStack = new();
 
@@ -52,11 +55,63 @@ public class RenderPipeline
     {
         _commands.Clear();
         _clipStack = new ClipStack();
-        TraverseTree(root, 0, 0, 0);
-        _commands.Sort((a, b) => a.ZOrder.CompareTo(b.ZOrder));
+        TraverseTree(root, 0, 0, 0, 0);
+        SortCommandsStable();
     }
 
-    private void TraverseTree(Core.UINode node, int depth, float scrollOffsetX, float scrollOffsetY)
+
+    /// <summary>
+    /// Orders draw commands by ZOrder, keeping traversal order for ties.
+    /// <para>
+    /// Ties are structural, not incidental: a node's text is emitted at <c>zOrder + 1</c> while its
+    /// first child's background is emitted at <c>depth + 1</c>, so they collide by construction.
+    /// Traversal already visits parents before children, i.e. correct painter's order, so ties must
+    /// keep it. <see cref="List{T}.Sort"/> is an unstable introsort whose handling of equal keys
+    /// differs between runtimes, so sorting an index array with the index as the tiebreaker gives a
+    /// total order and an identical result everywhere.
+    /// </para>
+    /// </summary>
+    private void SortCommandsStable()
+    {
+        int count = _commands.Count;
+        if (count < 2) return;
+
+        if (_order.Length < count)
+        {
+            _order = new int[count];
+            _sorted = new DrawCommand[count];
+        }
+
+        for (int i = 0; i < count; i++) _order[i] = i;
+
+        _comparer ??= new ZOrderComparer(_commands);
+        System.Array.Sort(_order, 0, count, _comparer);
+
+        for (int i = 0; i < count; i++) _sorted[i] = _commands[_order[i]];
+        for (int i = 0; i < count; i++) _commands[i] = _sorted[i];
+    }
+
+    private sealed class ZOrderComparer : IComparer<int>
+    {
+        private readonly List<DrawCommand> _source;
+
+        public ZOrderComparer(List<DrawCommand> source) => _source = source;
+
+        public int Compare(int a, int b)
+        {
+            int byZ = _source[a].ZOrder.CompareTo(_source[b].ZOrder);
+            return byZ != 0 ? byZ : a.CompareTo(b);
+        }
+    }
+
+    /// <summary>
+    /// Walks the tree emitting draw commands. <paramref name="stackingBase"/> is the z of the
+    /// enclosing stacking context: a node with an explicit ZIndex starts a new one, so its whole
+    /// subtree paints inside that band and its own background stays behind its content. Without
+    /// this, ZIndex applied only to the node itself while children kept their small depth values,
+    /// so a panel with ZIndex 5000 painted its background over everything inside it.
+    /// </summary>
+    private void TraverseTree(Core.UINode node, int depth, int stackingBase, float scrollOffsetX, float scrollOffsetY)
     {
         // Resolve style with pseudo-state overlays (hover, active, focus)
         var style = node.ComputedStyle;
@@ -98,7 +153,13 @@ public class RenderPipeline
         }
 
         float opacity = style.Opacity ?? 1f;
-        int zOrder = style.ZIndex ?? depth;
+        if (style.ZIndex is { } explicitZ)
+        {
+            stackingBase = explicitZ;
+            depth = 0;
+        }
+
+        int zOrder = stackingBase + depth;
 
         // Push clip rect if overflow is hidden or scroll
         bool pushClip = style.Overflow == Style.Overflow.Hidden
@@ -438,7 +499,7 @@ public class RenderPipeline
         // Recurse children with accumulated scroll offset (no UINode mutation)
         for (int i = 0; i < node.Children.Count; i++)
         {
-            TraverseTree(node.Children[i], depth + i + 1, childScrollX, childScrollY);
+            TraverseTree(node.Children[i], depth + i + 1, stackingBase, childScrollX, childScrollY);
         }
 
         // Draw scrollbar if content overflows
