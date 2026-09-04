@@ -1,0 +1,131 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PROJECT_NAME: ReactUI
+  PROJECT_DIR: ReactUI
+  PROJECT_FILE: ReactUI
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 1
+        fetch-tags: true
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: '6.0.x'
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/NuGet.config') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Get version from csproj
+      id: get_version
+      run: |
+        csproj="$PROJECT_DIR/$PROJECT_FILE.csproj"
+        version=$(grep -oP '<Version>\K[^<]+' "$csproj" || grep -oP '<VersionPrefix>\K[^<]+' "$csproj" || echo "1.0.0")
+        echo "version=$version" >> $GITHUB_OUTPUT
+        echo "Version: $version"
+
+    - name: Check if release needed
+      id: check_release
+      run: |
+        if git tag -l "v${{ steps.get_version.outputs.version }}" | grep -q .; then
+          echo "should_release=false" >> $GITHUB_OUTPUT
+          echo "Tag v${{ steps.get_version.outputs.version }} already exists, skipping release"
+        else
+          echo "should_release=true" >> $GITHUB_OUTPUT
+          echo "Will create release for v${{ steps.get_version.outputs.version }}"
+        fi
+
+    - name: Generate GitHub App token
+      id: app-token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ secrets.APP_ID }}
+        private-key: ${{ secrets.APP_PRIVATE_KEY }}
+        owner: ClazAU
+
+    - name: Download ClazAPI
+      run: |
+        mkdir -p /tmp/AmongUs/BepInEx/plugins
+        gh release download --repo ClazAU/au-clazapi --pattern 'ClazAPI.dll' --dir /tmp/AmongUs/BepInEx/plugins
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+    - name: Restore dependencies
+      run: dotnet restore "$PROJECT_DIR/$PROJECT_FILE.csproj"
+
+    - name: Build
+      run: dotnet build "$PROJECT_DIR/$PROJECT_FILE.csproj" --no-restore --configuration Release -p:AmongUs=/tmp/AmongUs
+
+    - name: Upload build artifact
+      if: github.event_name == 'pull_request'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.PROJECT_NAME }}
+        path: ${{ env.PROJECT_DIR }}/bin/Release/net6.0/${{ env.PROJECT_NAME }}.dll
+        retention-days: 7
+
+    - name: Upload to Panel API
+      if: github.event_name != 'pull_request' && steps.check_release.outputs.should_release == 'true'
+      env:
+        PANEL_API_URL: ${{ secrets.PANEL_API_URL }}
+        PANEL_API_KEY: ${{ secrets.PANEL_API_KEY }}
+        VERSION: ${{ steps.get_version.outputs.version }}
+      run: |
+        if [ -z "$PANEL_API_URL" ] || [ -z "$PANEL_API_KEY" ]; then
+          echo "::warning::PANEL_API_URL or PANEL_API_KEY not configured, skipping upload"
+          exit 0
+        fi
+
+        echo "Uploading $PROJECT_NAME v$VERSION to panel..."
+
+        status=$(curl -sS -o response.txt -w '%{http_code}' \
+          -X POST "$PANEL_API_URL/api/v3/mods/$PROJECT_NAME/versions" \
+          -H "Authorization: Bearer $PANEL_API_KEY" \
+          -F "version=$VERSION" \
+          -F "notes=Built from ${{ github.sha }}" \
+          -F "file=@$PROJECT_DIR/bin/Release/net6.0/$PROJECT_NAME.dll")
+
+        cat response.txt
+        case "$status" in
+          2??) echo "Upload successful (HTTP $status)" ;;
+          404) echo "::warning::Mod '$PROJECT_NAME' is not registered on the panel; create it there first" ;;
+          *)   echo "::warning::Upload failed with HTTP $status" ;;
+        esac
+
+    - name: Create Release
+      if: github.event_name != 'pull_request' && steps.check_release.outputs.should_release == 'true'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ steps.get_version.outputs.version }}
+        name: ${{ env.PROJECT_NAME }} v${{ steps.get_version.outputs.version }}
+        files: ${{ env.PROJECT_DIR }}/bin/Release/net6.0/${{ env.PROJECT_NAME }}.dll
+        generate_release_notes: true
+        draft: false
+        prerelease: false
