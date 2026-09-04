@@ -80,15 +80,14 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore "$PROJECT_DIR/$PROJECT_FILE.csproj"
 
-    # ILRepack resolves references through $(AmongUs)/BepInEx/core and /interop; stage them from the NuGet cache.
+    # ILRepack resolves references through $(AmongUs)/BepInEx/core and /interop; stage every
+    # restored package's lib DLLs there so the csproj's fixed search dirs are not needed on CI.
     - name: Stage BepInEx core and interop for ILRepack
       run: |
         mkdir -p /tmp/AmongUs/BepInEx/core /tmp/AmongUs/BepInEx/interop
-        for pkg in harmonyx il2cppinterop.runtime il2cppinterop.common bepinex.core bepinex.unity.il2cpp bepinex.unity.common; do
-          find ~/.nuget/packages/$pkg -path '*/lib/*' -name '*.dll' -exec cp -n {} /tmp/AmongUs/BepInEx/core/ \; 2>/dev/null || true
-        done
+        find ~/.nuget/packages -path '*/lib/*' -name '*.dll' -not -path '*amongus.gamelibs*' -exec cp -n {} /tmp/AmongUs/BepInEx/core/ \; 2>/dev/null || true
         find ~/.nuget/packages/amongus.gamelibs.steam -path '*/lib/*' -name '*.dll' -exec cp -n {} /tmp/AmongUs/BepInEx/interop/ \; 2>/dev/null || true
-        ls /tmp/AmongUs/BepInEx/core | head -20
+        ls /tmp/AmongUs/BepInEx/core | wc -l
 
     - name: Build
       run: dotnet build "$PROJECT_DIR/$PROJECT_FILE.csproj" --no-restore --configuration Release -p:AmongUs=/tmp/AmongUs
