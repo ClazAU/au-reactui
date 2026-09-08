@@ -92,6 +92,12 @@ jobs:
     - name: Build
       run: dotnet build "$PROJECT_DIR/$PROJECT_FILE.csproj" --no-restore --configuration Release -p:AmongUs=/tmp/AmongUs
 
+    # Same plugin without the JSX runtime, for mods that only use the C# API.
+    - name: Build minimal
+      run: |
+        dotnet build "$PROJECT_DIR/$PROJECT_FILE.csproj" --no-restore --configuration Release -p:AmongUs=/tmp/AmongUs -p:Minimal=true -p:SkipDeploy=true -p:OutDir=$PROJECT_DIR/bin/Release/minimal/
+        cp "$PROJECT_DIR/bin/Release/minimal/$PROJECT_NAME.dll" "$PROJECT_DIR/bin/Release/net6.0/$PROJECT_NAME.Minimal.dll"
+
     - name: Upload build artifact
       if: github.event_name == 'pull_request'
       uses: actions/upload-artifact@v4
@@ -134,7 +140,9 @@ jobs:
       with:
         tag_name: v${{ steps.get_version.outputs.version }}
         name: ${{ env.PROJECT_NAME }} v${{ steps.get_version.outputs.version }}
-        files: ${{ env.PROJECT_DIR }}/bin/Release/net6.0/${{ env.PROJECT_NAME }}.dll
+        files: |
+          ${{ env.PROJECT_DIR }}/bin/Release/net6.0/${{ env.PROJECT_NAME }}.dll
+          ${{ env.PROJECT_DIR }}/bin/Release/net6.0/${{ env.PROJECT_NAME }}.Minimal.dll
         generate_release_notes: true
         draft: false
         prerelease: false

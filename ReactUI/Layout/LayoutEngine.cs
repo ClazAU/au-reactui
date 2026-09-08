@@ -78,19 +78,23 @@ public static class LayoutEngine
             float measuredW = measured.x;
             float measuredH = measured.y;
 
+            var content = new UnityEngine.GUIContent(text);
             ln.MeasureFunc = (maxWidth, widthMode, maxHeight, heightMode) =>
             {
                 float availWidth = widthMode == MeasureMode.Undefined ? float.MaxValue : maxWidth;
                 float fitWidth = System.Math.Min(measuredW, availWidth);
 
-                // Estimate line wrapping if constrained
-                int lines = fitWidth > 0 && measuredW > fitWidth
-                    ? (int)System.Math.Ceiling(measuredW / fitWidth)
-                    : 1;
-                if (lines < 1) lines = 1;
-                float fitHeight = lines * measuredH;
+                // Constrained: let IMGUI break the same words the renderer will break,
+                // so the box is exactly as tall as the wrapped text.
+                if (fitWidth > 0 && measuredW > fitWidth)
+                {
+                    guiStyle.wordWrap = true;
+                    float wrappedH = guiStyle.CalcHeight(content, fitWidth);
+                    guiStyle.wordWrap = false;
+                    return (fitWidth, System.Math.Max(wrappedH, measuredH));
+                }
 
-                return (fitWidth, fitHeight);
+                return (fitWidth, measuredH);
             };
         }
 

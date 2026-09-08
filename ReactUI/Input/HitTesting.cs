@@ -53,10 +53,53 @@ public static class HitTesting
             if (hit != null) return hit;
         }
 
-        // Check self: use scroll-adjusted position
-        if (x >= renderX && x <= renderX + renderW && y >= renderY && y <= renderY + renderH)
+        // Check self: use scroll-adjusted position. A bare layout container (no
+        // paint, no handlers) is transparent to the pointer, otherwise every
+        // full-screen root would swallow the input meant for the roots below it.
+        if (IsHittable(node) && x >= renderX && x <= renderX + renderW && y >= renderY && y <= renderY + renderH)
             return node;
 
         return null;
+    }
+
+    /// <summary>
+    /// Whether a node claims pointer hits for its own box: anything painted,
+    /// anything with a pointer-driven style or handler, and every leaf element.
+    /// </summary>
+    public static bool IsHittable(Core.UINode node)
+    {
+        var st = node.ComputedStyle;
+        if (st?.PointerEvents == true) return true;
+
+        switch (node.Type)
+        {
+            case "text":
+            case "image":
+            case "input":
+            case "toggle":
+            case "slider":
+            case "keycapture":
+                return true;
+        }
+
+        if (st != null)
+        {
+            if (st.Background is { A: > 0f }) return true;
+            if (st.BackgroundGradient != null) return true;
+            if (st.BorderWidth is > 0f) return true;
+            if (st.BoxShadow != null) return true;
+            if (st.Overflow == Style.Overflow.Scroll) return true;
+            if (st.Cursor.HasValue) return true;
+            if (st.Hover != null || st.Active != null || st.Focus != null) return true;
+        }
+
+        var props = node.LastVNode?.Props;
+        if (props != null)
+        {
+            foreach (var key in props.Keys)
+                if (key.StartsWith("on", System.StringComparison.Ordinal)) return true;
+        }
+
+        return false;
     }
 }

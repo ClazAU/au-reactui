@@ -675,8 +675,28 @@ public class RenderPipeline
 
         var content = new GUIContent(cmd.Text);
         var measured = guiStyle.CalcSize(content);
-        float w = System.Math.Max(cmd.Rect.Width, measured.x);
-        float h = cmd.Rect.Height > 0 ? cmd.Rect.Height : measured.y;
+
+        // Layout gave this text less width than a single line needs: wrap to the
+        // box it was given, anchored to the top so the lines stack downward.
+        bool wraps = cmd.Rect.Width > 0 && measured.x > cmd.Rect.Width + 0.5f;
+        float w, h;
+        if (wraps)
+        {
+            guiStyle.wordWrap = true;
+            guiStyle.alignment = cmd.TextAlign switch
+            {
+                Style.TextAlign.Center => TextAnchor.UpperCenter,
+                Style.TextAlign.Right => TextAnchor.UpperRight,
+                _ => TextAnchor.UpperLeft,
+            };
+            w = cmd.Rect.Width;
+            h = System.Math.Max(cmd.Rect.Height, guiStyle.CalcHeight(content, w));
+        }
+        else
+        {
+            w = System.Math.Max(cmd.Rect.Width, measured.x);
+            h = cmd.Rect.Height > 0 ? cmd.Rect.Height : measured.y;
+        }
 
         // If clipping, offset position relative to clip rect origin
         float drawX = clipping ? cmd.Rect.X - clipRect!.Value.X : cmd.Rect.X;
