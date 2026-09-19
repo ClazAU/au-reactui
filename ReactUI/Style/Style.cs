@@ -70,6 +70,22 @@ public class Style
     // --- Image ---
     public ObjectFit? ObjectFit;
 
+    /// <summary>Draws the text again in this colour around the glyphs. Inherited by child text like Color.</summary>
+    public UIColor? TextOutlineColor;
+
+    /// <summary>Outline thickness in logical pixels; defaults to 2 when only the colour is set.</summary>
+    public float? TextOutlineWidth;
+
+    /// <summary>
+    /// Drawn as part of the element's own background: over <see cref="Background"/>, inside the border and its
+    /// rounded corners, under every child. Fitted with <see cref="ObjectFit"/> (Cover by default) and coloured
+    /// by <see cref="ImageTint"/>.
+    /// </summary>
+    public UnityEngine.Texture2D? BackgroundImage;
+
+    /// <summary>Multiplies an image's pixels; black keeps the alpha and gives a silhouette.</summary>
+    public UIColor? ImageTint;
+
     // --- Interaction ---
     public CursorType? Cursor;
     public bool? PointerEvents;
@@ -136,6 +152,10 @@ public class Style
 
             // Image
             ObjectFit = overlay.ObjectFit ?? ObjectFit,
+            ImageTint = overlay.ImageTint ?? ImageTint,
+            BackgroundImage = overlay.BackgroundImage ?? BackgroundImage,
+            TextOutlineColor = overlay.TextOutlineColor ?? TextOutlineColor,
+            TextOutlineWidth = overlay.TextOutlineWidth ?? TextOutlineWidth,
 
             // Interaction
             Cursor = overlay.Cursor ?? Cursor,

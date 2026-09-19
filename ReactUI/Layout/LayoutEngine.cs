@@ -75,7 +75,9 @@ public static class LayoutEngine
             guiStyle.wordWrap = false;
 
             var measured = guiStyle.CalcSize(new UnityEngine.GUIContent(text));
-            float measuredW = measured.x;
+            // Layout snaps boxes to whole pixels, and a box even a fraction narrower than the text makes the
+            // renderer wrap its last character, so the text asks for a whole pixel more than it measures.
+            float measuredW = (float)System.Math.Ceiling(measured.x) + 1f;
             float measuredH = measured.y;
 
             var content = new UnityEngine.GUIContent(text);

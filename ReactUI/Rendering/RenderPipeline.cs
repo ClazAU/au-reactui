@@ -53,7 +53,11 @@ public class RenderPipeline
         _commands.Clear();
         _clipStack = new ClipStack();
         TraverseTree(root, 0, 0, 0);
-        _commands.Sort((a, b) => a.ZOrder.CompareTo(b.ZOrder));
+        // List.Sort is unstable, and most siblings share a z-order: their draw order has to stay the tree order,
+        // or equal-depth elements swap places from one frame to the next.
+        var ordered = System.Linq.Enumerable.ToList(System.Linq.Enumerable.OrderBy(_commands, command => command.ZOrder));
+        _commands.Clear();
+        _commands.AddRange(ordered);
     }
 
     private void TraverseTree(Core.UINode node, int depth, float scrollOffsetX, float scrollOffsetY)
@@ -159,6 +163,27 @@ public class RenderPipeline
             });
         }
 
+        if (style.BackgroundImage != null && node.Type != "image")
+        {
+            // Same z-order as the background rect it follows, so it stays under the border-box's children.
+            float inset = style.BorderWidth ?? 0;
+            _commands.Add(new DrawCommand
+            {
+                Type = DrawType.Image,
+                Rect = new Core.Rect(rect.X + inset, rect.Y + inset, rect.Width - inset * 2, rect.Height - inset * 2),
+                ClipRect = clipRect,
+                ZOrder = zOrder,
+                Texture = style.BackgroundImage,
+                ObjectFit = style.ObjectFit ?? Style.ObjectFit.Cover,
+                ImageTint = style.ImageTint?.ToUnityColor() ?? Color.white,
+                BorderRadiusTL = System.Math.Max(0, radiusTL - inset),
+                BorderRadiusTR = System.Math.Max(0, radiusTR - inset),
+                BorderRadiusBR = System.Math.Max(0, radiusBR - inset),
+                BorderRadiusBL = System.Math.Max(0, radiusBL - inset),
+                Opacity = opacity,
+            });
+        }
+
         // Text content
         if (node.Type == "text" && !string.IsNullOrEmpty(node.LastVNode?.TextContent))
         {
@@ -176,6 +201,8 @@ public class RenderPipeline
                 FontWeight = style.FontWeight ?? parentStyle?.FontWeight ?? 400,
                 TextAlign = style.TextAlign ?? parentStyle?.TextAlign ?? Style.TextAlign.Left,
                 LineHeight = style.LineHeight ?? 0,
+                TextOutlineColor = style.TextOutlineColor ?? parentStyle?.TextOutlineColor,
+                TextOutlineWidth = style.TextOutlineWidth ?? parentStyle?.TextOutlineWidth ?? 2f,
                 Opacity = opacity,
             });
         }
@@ -399,6 +426,7 @@ public class RenderPipeline
                     ZOrder = zOrder + 1,
                     Texture = tex,
                     ObjectFit = style.ObjectFit ?? Style.ObjectFit.Fill,
+                    ImageTint = style.ImageTint?.ToUnityColor() ?? Color.white,
                     BorderRadiusTL = radiusTL,
                     BorderRadiusTR = radiusTR,
                     BorderRadiusBR = radiusBR,
@@ -660,7 +688,9 @@ public class RenderPipeline
             GUI.BeginClip(new UnityEngine.Rect(cr.X, cr.Y, cr.Width, cr.Height));
         }
 
-        var guiStyle = new GUIStyle(GUI.skin.label);
+        // A bare style, the same as LayoutEngine measures with. The skin's label style carries padding, which
+        // made drawn text wider than the box layout gave it, so the last character of tight labels wrapped.
+        var guiStyle = new GUIStyle();
         guiStyle.fontSize = (int)cmd.FontSize;
         guiStyle.normal.textColor = cmd.TextColor.ToUnityColor() * new Color(1, 1, 1, cmd.Opacity);
         guiStyle.alignment = cmd.TextAlign switch
@@ -678,7 +708,7 @@ public class RenderPipeline
 
         // Layout gave this text less width than a single line needs: wrap to the
         // box it was given, anchored to the top so the lines stack downward.
-        bool wraps = cmd.Rect.Width > 0 && measured.x > cmd.Rect.Width + 0.5f;
+        bool wraps = cmd.Rect.Width > 0 && measured.x > cmd.Rect.Width + 1.5f;
         float w, h;
         if (wraps)
         {
@@ -702,6 +732,22 @@ public class RenderPipeline
         float drawX = clipping ? cmd.Rect.X - clipRect!.Value.X : cmd.Rect.X;
         float drawY = clipping ? cmd.Rect.Y - clipRect!.Value.Y : cmd.Rect.Y;
 
+        if (cmd.TextOutlineColor is { } outline && cmd.TextOutlineWidth > 0f)
+        {
+            // IMGUI has no stroke, so the outline is the same label stamped around the glyphs.
+            var fill = guiStyle.normal.textColor;
+            guiStyle.normal.textColor = outline.ToUnityColor() * new Color(1, 1, 1, cmd.Opacity);
+            for (var step = 0; step < 8; step++)
+            {
+                var angle = step * Mathf.PI / 4f;
+                var offsetX = Mathf.Cos(angle) * cmd.TextOutlineWidth;
+                var offsetY = Mathf.Sin(angle) * cmd.TextOutlineWidth;
+                GUI.Label(new UnityEngine.Rect(drawX + offsetX, drawY + offsetY, w, h), cmd.Text, guiStyle);
+            }
+
+            guiStyle.normal.textColor = fill;
+        }
+
         GUI.Label(
             new UnityEngine.Rect(drawX, drawY, w, h),
             cmd.Text,
@@ -724,13 +770,18 @@ public class RenderPipeline
     {
         if (cmd.Texture == null) return;
 
-        // Compute source UV rect based on ObjectFit
-        var uvRect = ComputeObjectFitUV(cmd.Texture, cmd.Rect, cmd.ObjectFit);
-
         if (_imageMaterial == null) return;
 
+        // Contain letterboxes: the whole texture is shown in a smaller quad. The other modes fill the box and
+        // choose which part of the texture to show, which is a UV crop.
+        var contain = cmd.ObjectFit == Style.ObjectFit.Contain ||
+                      (cmd.ObjectFit == Style.ObjectFit.ScaleDown && (cmd.Texture.width > cmd.Rect.Width || cmd.Texture.height > cmd.Rect.Height));
+        var dest = contain ? FitInside(cmd.Texture, cmd.Rect) : cmd.Rect;
+        var uvRect = contain ? new Core.Rect(0, 0, 1, 1) : ComputeObjectFitUV(cmd.Texture, cmd.Rect, cmd.ObjectFit);
+
         _imageMaterial.SetTexture("_MainTex", cmd.Texture);
-        _imageMaterial.SetVector("_RectSize", new Vector4(cmd.Rect.Width, cmd.Rect.Height, 0, 0));
+        _imageMaterial.SetColor("_Tint", cmd.ImageTint);
+        _imageMaterial.SetVector("_RectSize", new Vector4(dest.Width, dest.Height, 0, 0));
         _imageMaterial.SetVector("_Radii", new Vector4(
             cmd.BorderRadiusTL, cmd.BorderRadiusTR, cmd.BorderRadiusBR, cmd.BorderRadiusBL));
         _imageMaterial.SetFloat("_Opacity", cmd.Opacity);
@@ -741,16 +792,16 @@ public class RenderPipeline
         GL.Color(new Color(1, 1, 1, cmd.Opacity));
 
         GL.TexCoord2(uvRect.X, uvRect.Y + uvRect.Height);
-        GL.Vertex3(cmd.Rect.X, cmd.Rect.Y, 0);
+        GL.Vertex3(dest.X, dest.Y, 0);
 
         GL.TexCoord2(uvRect.Right, uvRect.Y + uvRect.Height);
-        GL.Vertex3(cmd.Rect.Right, cmd.Rect.Y, 0);
+        GL.Vertex3(dest.Right, dest.Y, 0);
 
         GL.TexCoord2(uvRect.Right, uvRect.Y);
-        GL.Vertex3(cmd.Rect.Right, cmd.Rect.Bottom, 0);
+        GL.Vertex3(dest.Right, dest.Bottom, 0);
 
         GL.TexCoord2(uvRect.X, uvRect.Y);
-        GL.Vertex3(cmd.Rect.X, cmd.Rect.Bottom, 0);
+        GL.Vertex3(dest.X, dest.Bottom, 0);
 
         GL.End();
     }
@@ -778,6 +829,14 @@ public class RenderPipeline
         GL.Vertex3(rect.Right, rect.Bottom, 0);
         GL.Vertex3(rect.X, rect.Bottom, 0);
         GL.End();
+    }
+
+    private static Core.Rect FitInside(Texture2D tex, Core.Rect box)
+    {
+        var scale = System.Math.Min(box.Width / tex.width, box.Height / tex.height);
+        var width = tex.width * scale;
+        var height = tex.height * scale;
+        return new Core.Rect(box.X + (box.Width - width) / 2f, box.Y + (box.Height - height) / 2f, width, height);
     }
 
     /// <summary>

@@ -89,6 +89,9 @@ public static class StyleConverter
 
         // Image
         ["objectFit"] = (s, v) => s.ObjectFit = ParseEnum<ObjectFit>(v),
+        ["imageTint"] = (s, v) => s.ImageTint = ParseColor(v),
+        ["textOutlineColor"] = (s, v) => s.TextOutlineColor = ParseColor(v),
+        ["textOutlineWidth"] = (s, v) => s.TextOutlineWidth = ToFloat(v),
 
         // Interaction
         ["cursor"] = (s, v) => s.Cursor = ParseEnum<CursorType>(v),
