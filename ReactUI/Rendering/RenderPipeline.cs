@@ -714,7 +714,16 @@ public class RenderPipeline
 
         // Layout gave this text less width than a single line needs: wrap to the
         // box it was given, anchored to the top so the lines stack downward.
+        // Layout measures outside OnGUI, where the font can differ slightly from the one drawn with here, so
+        // text only wraps when layout also left room for the extra lines.
         bool wraps = cmd.Rect.Width > 0 && measured.x > cmd.Rect.Width + 1.5f;
+        if (wraps && cmd.Rect.Height > 0)
+        {
+            guiStyle.wordWrap = true;
+            wraps = guiStyle.CalcHeight(content, cmd.Rect.Width) <= cmd.Rect.Height + 1.5f;
+            guiStyle.wordWrap = false;
+        }
+
         float w, h;
         if (wraps)
         {
