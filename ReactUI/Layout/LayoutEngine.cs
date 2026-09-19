@@ -60,7 +60,6 @@ public static class LayoutEngine
             var text = uiNode.LastVNode.TextContent;
             var fontSize = uiNode.ComputedStyle?.FontSize ?? 14f;
             var fontWeight = uiNode.ComputedStyle?.FontWeight ?? 400;
-            var lineHeight = uiNode.ComputedStyle?.LineHeight ?? 1.4f;
 
             // Inherit text styles from parent if not set
             if (!uiNode.ComputedStyle?.FontSize.HasValue ?? true)
@@ -68,36 +67,7 @@ public static class LayoutEngine
             if (!uiNode.ComputedStyle?.FontWeight.HasValue ?? true)
                 fontWeight = uiNode.Parent?.ComputedStyle?.FontWeight ?? fontWeight;
 
-            // Cache the GUIStyle measurement for accurate sizing
-            var guiStyle = new UnityEngine.GUIStyle();
-            guiStyle.fontSize = (int)fontSize;
-            guiStyle.fontStyle = fontWeight >= 700 ? UnityEngine.FontStyle.Bold : UnityEngine.FontStyle.Normal;
-            guiStyle.wordWrap = false;
-
-            var measured = guiStyle.CalcSize(new UnityEngine.GUIContent(text));
-            // Layout snaps boxes to whole pixels, and a box even a fraction narrower than the text makes the
-            // renderer wrap its last character, so the text asks for a whole pixel more than it measures.
-            float measuredW = (float)System.Math.Ceiling(measured.x) + 1f;
-            float measuredH = measured.y;
-
-            var content = new UnityEngine.GUIContent(text);
-            ln.MeasureFunc = (maxWidth, widthMode, maxHeight, heightMode) =>
-            {
-                float availWidth = widthMode == MeasureMode.Undefined ? float.MaxValue : maxWidth;
-                float fitWidth = System.Math.Min(measuredW, availWidth);
-
-                // Constrained: let IMGUI break the same words the renderer will break,
-                // so the box is exactly as tall as the wrapped text.
-                if (fitWidth > 0 && measuredW > fitWidth)
-                {
-                    guiStyle.wordWrap = true;
-                    float wrappedH = guiStyle.CalcHeight(content, fitWidth);
-                    guiStyle.wordWrap = false;
-                    return (fitWidth, System.Math.Max(wrappedH, measuredH));
-                }
-
-                return (fitWidth, measuredH);
-            };
+            ln.MeasureFunc = TextMeasure(text, fontSize, fontWeight);
         }
 
         // Slider elements need a measure function for track height
@@ -122,16 +92,7 @@ public static class LayoutEngine
             var fontSize = uiNode.ComputedStyle?.FontSize ?? 14f;
             var fontWeight = uiNode.ComputedStyle?.FontWeight ?? 400;
 
-            var guiStyle = new UnityEngine.GUIStyle();
-            guiStyle.fontSize = (int)fontSize;
-            guiStyle.fontStyle = fontWeight >= 700 ? UnityEngine.FontStyle.Bold : UnityEngine.FontStyle.Normal;
-            float lineH = guiStyle.CalcSize(new UnityEngine.GUIContent("Ag")).y;
-
-            ln.MeasureFunc = (maxWidth, widthMode, maxHeight, heightMode) =>
-            {
-                float w = widthMode == MeasureMode.Exactly ? maxWidth : 100;
-                return (w, lineH);
-            };
+            ln.MeasureFunc = InputMeasure(fontSize, fontWeight);
         }
 
         // Recurse children
@@ -206,6 +167,49 @@ public static class LayoutEngine
         }
     }
 
+    // The Unity types stay out of BuildLayoutTree, which would otherwise need UnityEngine loaded to lay out
+    // a tree with no text in it.
+    private static UnityEngine.GUIStyle MeasuringStyle(float fontSize, int fontWeight) => new()
+    {
+        fontSize = (int)fontSize,
+        fontStyle = fontWeight >= 700 ? UnityEngine.FontStyle.Bold : UnityEngine.FontStyle.Normal,
+        wordWrap = false,
+    };
+
+    private static System.Func<float, MeasureMode, float, MeasureMode, (float w, float h)> TextMeasure(string text, float fontSize, int fontWeight)
+    {
+        var guiStyle = MeasuringStyle(fontSize, fontWeight);
+        var content = new UnityEngine.GUIContent(text);
+        var measured = guiStyle.CalcSize(content);
+        // Layout snaps boxes to whole pixels, and a box even a fraction narrower than the text makes the
+        // renderer wrap its last character, so the text asks for a whole pixel more than it measures.
+        float measuredW = (float)System.Math.Ceiling(measured.x) + 1f;
+        float measuredH = measured.y;
+
+        return (maxWidth, widthMode, maxHeight, heightMode) =>
+        {
+            float availWidth = widthMode == MeasureMode.Undefined ? float.MaxValue : maxWidth;
+            float fitWidth = System.Math.Min(measuredW, availWidth);
+
+            // Constrained: let IMGUI break the same words the renderer will break,
+            // so the box is exactly as tall as the wrapped text.
+            if (fitWidth > 0 && measuredW > fitWidth)
+            {
+                guiStyle.wordWrap = true;
+                float wrappedH = guiStyle.CalcHeight(content, fitWidth);
+                guiStyle.wordWrap = false;
+                return (fitWidth, System.Math.Max(wrappedH, measuredH));
+            }
+
+            return (fitWidth, measuredH);
+        };
+    }
+
+    private static System.Func<float, MeasureMode, float, MeasureMode, (float w, float h)> InputMeasure(float fontSize, int fontWeight)
+    {
+        float lineH = MeasuringStyle(fontSize, fontWeight).CalcSize(new UnityEngine.GUIContent("Ag")).y;
+        return (maxWidth, widthMode, maxHeight, heightMode) => (widthMode == MeasureMode.Exactly ? maxWidth : 100, lineH);
+    }
     private static ReactUI.Style.Style ApplyLayoutTransitions(UINode node, ReactUI.Style.Style style)
     {
         var tr = style.Transitions;

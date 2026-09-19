@@ -18,6 +18,16 @@ public enum ObjectFit { Fill, Contain, Cover, None, ScaleDown }
 /// <summary>Part of a texture, in 0..1 texture space with the origin at the bottom left.</summary>
 public readonly record struct ImageRegion(float X, float Y, float Width, float Height);
 
+/// <summary>A texture held without naming its Unity type in a field, so styles still load where Unity does not.</summary>
+public readonly struct ImageSource
+{
+    public object? Texture { get; }
+
+    private ImageSource(object? texture) => Texture = texture;
+
+    public static implicit operator ImageSource(UnityEngine.Texture2D? texture) => new(texture);
+}
+
 // Interaction enums
 public enum CursorType { Default, Pointer, Text, Grab, Grabbing, NotAllowed, None }
 
@@ -84,7 +94,7 @@ public class Style
     /// rounded corners, under every child. Fitted with <see cref="ObjectFit"/> (Cover by default) and coloured
     /// by <see cref="ImageTint"/>.
     /// </summary>
-    public UnityEngine.Texture2D? BackgroundImage;
+    public ImageSource? BackgroundImage;
 
     /// <summary>
     /// Shows only this part of <see cref="BackgroundImage"/>, stretched over the element, instead of fitting the
