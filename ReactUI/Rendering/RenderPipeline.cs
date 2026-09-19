@@ -163,7 +163,7 @@ public class RenderPipeline
             });
         }
 
-        if (style.BackgroundImage != null && node.Type != "image")
+        if (style.BackgroundImage?.Texture is Texture2D backgroundImage && backgroundImage != null && node.Type != "image")
         {
             // Same z-order as the background rect it follows, so it stays under the border-box's children.
             float inset = style.BorderWidth ?? 0;
@@ -173,7 +173,7 @@ public class RenderPipeline
                 Rect = new Core.Rect(rect.X + inset, rect.Y + inset, rect.Width - inset * 2, rect.Height - inset * 2),
                 ClipRect = clipRect,
                 ZOrder = zOrder,
-                Texture = style.BackgroundImage,
+                Texture = backgroundImage,
                 ImageRegion = style.BackgroundImageRegion,
                 ObjectFit = style.ObjectFit ?? Style.ObjectFit.Cover,
                 ImageTint = style.ImageTint?.ToUnityColor() ?? Color.white,
@@ -190,10 +190,15 @@ public class RenderPipeline
         {
             // Inherit text properties from parent if not set on text node
             var parentStyle = node.Parent?.ComputedStyle;
+            float textBorder = style.BorderWidth ?? 0;
+            float textPadL = (style.Padding?.Left ?? 0) + textBorder;
+            float textPadT = (style.Padding?.Top ?? 0) + textBorder;
             _commands.Add(new DrawCommand
             {
                 Type = DrawType.Text,
-                Rect = rect,
+                Rect = new Core.Rect(rect.X + textPadL, rect.Y + textPadT,
+                    rect.Width - textPadL - (style.Padding?.Right ?? 0) - textBorder,
+                    rect.Height - textPadT - (style.Padding?.Bottom ?? 0) - textBorder),
                 ClipRect = clipRect,
                 ZOrder = zOrder + 1, // text renders above background
                 Text = node.LastVNode.TextContent,

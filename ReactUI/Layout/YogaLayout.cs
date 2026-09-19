@@ -103,8 +103,8 @@ public static class YogaLayout
         // ---- Leaf node with MeasureFunc ----
         if (node.MeasureFunc != null && node.Children.Count == 0)
         {
-            float mw = IsNaN(nodeW) ? availableWidth : nodeW;
-            float mh = IsNaN(nodeH) ? availableHeight : nodeH;
+            float mw = (IsNaN(nodeW) ? availableWidth : nodeW) - padH;
+            float mh = (IsNaN(nodeH) ? availableHeight : nodeH) - padV;
             // If available is NaN or 0, give leaf nodes freedom to measure unconstrained
             if (IsNaN(mw) || mw <= 0) mw = 100000f;
             if (IsNaN(mh) || mh <= 0) mh = 100000f;

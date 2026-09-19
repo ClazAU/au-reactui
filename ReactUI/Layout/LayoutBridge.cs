@@ -100,14 +100,15 @@ public static class LayoutBridge
         if (style.MaxHeight.HasValue)
             node.MaxHeight = ResolvePx(style.MaxHeight.Value);
 
-        // Padding (resolve to px, percent not supported for padding)
-        if (style.Padding.HasValue)
+        // The border is drawn inside the box, so it takes content space the same way padding does.
+        if (style.Padding.HasValue || style.BorderWidth.HasValue)
         {
-            var p = style.Padding.Value;
-            node.PaddingTop = ResolveEdge(p.Top);
-            node.PaddingRight = ResolveEdge(p.Right);
-            node.PaddingBottom = ResolveEdge(p.Bottom);
-            node.PaddingLeft = ResolveEdge(p.Left);
+            var p = style.Padding ?? new EdgeValues(0);
+            float border = style.BorderWidth ?? 0f;
+            node.PaddingTop = ResolveEdge(p.Top) + border;
+            node.PaddingRight = ResolveEdge(p.Right) + border;
+            node.PaddingBottom = ResolveEdge(p.Bottom) + border;
+            node.PaddingLeft = ResolveEdge(p.Left) + border;
         }
 
         // Margin (store raw StyleValues for percent resolution during layout)
