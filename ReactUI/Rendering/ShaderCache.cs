@@ -22,30 +22,39 @@ public static class ShaderCache
 
         try
         {
-            var bundle = AssetBundleManager.Load("reactui");
-
-            var allAssets = bundle.LoadAllAssets(Il2CppInterop.Runtime.Il2CppType.Of<Shader>());
-            foreach (var asset in allAssets)
-            {
-                var shader = asset.TryCast<Shader>();
-                if (shader != null && !string.IsNullOrEmpty(shader.name))
-                {
-                    _shaders[shader.name] = shader;
-                    var mat = new Material(shader);
-                    mat.hideFlags = HideFlags.HideAndDontSave;
-                    _materials[shader.name] = mat;
-                    Plugin.ReactUIPlugin.Logger.LogInfo($"[ReactUI] Loaded shader: {shader.name}");
-                }
-            }
+            LoadShaders("reactui");
         }
         catch (System.Exception ex)
         {
             Plugin.ReactUIPlugin.Logger.LogError($"[ReactUI] Failed to load shader bundle: {ex}");
         }
 
+        try
+        {
+            // Shaders rebuilt since the main bundle was last built ship in this one and replace theirs by name. A
+            // platform that has no such bundle keeps the main bundle's version.
+            LoadShaders("reactui-image");
+        }
+        catch (System.Exception)
+        {
+        }
+
         Plugin.ReactUIPlugin.Logger.LogInfo($"[ReactUI] ShaderCache: SDFRect={HasShader("ReactUI/SDFRect")}, SDFText={HasShader("ReactUI/SDFText")}, Image={HasShader("ReactUI/Image")}, Blur={HasShader("ReactUI/KawaseBlur")}");
     }
 
+    private static void LoadShaders(string bundleName)
+    {
+        var bundle = AssetBundleManager.Load(bundleName);
+        foreach (var asset in bundle.LoadAllAssets(Il2CppInterop.Runtime.Il2CppType.Of<Shader>()))
+        {
+            var shader = asset.TryCast<Shader>();
+            if (shader == null || string.IsNullOrEmpty(shader.name)) continue;
+
+            _shaders[shader.name] = shader;
+            _materials[shader.name] = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
+            Plugin.ReactUIPlugin.Logger.LogInfo($"[ReactUI] Loaded shader: {shader.name} ({bundleName})");
+        }
+    }
     /// <summary>
     /// Get a cached material by shader name. Returns null if the shader wasn't loaded.
     /// </summary>

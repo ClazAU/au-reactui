@@ -101,9 +101,10 @@ Shader "ReactUI/SDFRect"
             float selectRadius(float2 p, float4 radii)
             {
                 // radii = (TL, TR, BR, BL)
-                if (p.x < 0.0 && p.y > 0.0) return radii.x; // Top-left
-                if (p.x >= 0.0 && p.y > 0.0) return radii.y; // Top-right
-                if (p.x >= 0.0 && p.y <= 0.0) return radii.z; // Bottom-right
+                // The quad's UVs start at the top-left (see RenderPipeline.DrawGLQuad), so negative y is the top.
+                if (p.x < 0.0 && p.y < 0.0) return radii.x; // Top-left
+                if (p.x >= 0.0 && p.y < 0.0) return radii.y; // Top-right
+                if (p.x >= 0.0 && p.y >= 0.0) return radii.z; // Bottom-right
                 return radii.w;                                 // Bottom-left
             }
 
