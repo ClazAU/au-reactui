@@ -31,6 +31,7 @@ public struct DrawCommand
     public UnityEngine.Texture2D? Texture;
     public Style.ObjectFit ObjectFit;
     public UnityEngine.Color ImageTint;
+    public Style.ImageRegion? ImageRegion;
     public Style.UIColor? TextOutlineColor;
     public float TextOutlineWidth;
 }

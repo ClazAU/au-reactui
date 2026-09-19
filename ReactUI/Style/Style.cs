@@ -15,6 +15,9 @@ public enum TextAlign { Left, Center, Right, Justify }
 // Image enums
 public enum ObjectFit { Fill, Contain, Cover, None, ScaleDown }
 
+/// <summary>Part of a texture, in 0..1 texture space with the origin at the bottom left.</summary>
+public readonly record struct ImageRegion(float X, float Y, float Width, float Height);
+
 // Interaction enums
 public enum CursorType { Default, Pointer, Text, Grab, Grabbing, NotAllowed, None }
 
@@ -82,6 +85,12 @@ public class Style
     /// by <see cref="ImageTint"/>.
     /// </summary>
     public UnityEngine.Texture2D? BackgroundImage;
+
+    /// <summary>
+    /// Shows only this part of <see cref="BackgroundImage"/>, stretched over the element, instead of fitting the
+    /// whole texture. Lets several elements cut different pieces from one large sheet so none of them repeat.
+    /// </summary>
+    public ImageRegion? BackgroundImageRegion;
 
     /// <summary>Multiplies an image's pixels; black keeps the alpha and gives a silhouette.</summary>
     public UIColor? ImageTint;
@@ -154,6 +163,7 @@ public class Style
             ObjectFit = overlay.ObjectFit ?? ObjectFit,
             ImageTint = overlay.ImageTint ?? ImageTint,
             BackgroundImage = overlay.BackgroundImage ?? BackgroundImage,
+            BackgroundImageRegion = overlay.BackgroundImageRegion ?? BackgroundImageRegion,
             TextOutlineColor = overlay.TextOutlineColor ?? TextOutlineColor,
             TextOutlineWidth = overlay.TextOutlineWidth ?? TextOutlineWidth,
 

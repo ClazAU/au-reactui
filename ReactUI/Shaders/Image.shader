@@ -7,6 +7,7 @@ Shader "ReactUI/Image"
         _Radii ("Border Radii (TL TR BR BL)", Vector) = (0, 0, 0, 0)
         _Opacity ("Opacity", Float) = 1.0
         _Tint ("Tint Color", Color) = (1, 1, 1, 1)
+        _UVRect ("Texture UV Rect (x, y, w, h)", Vector) = (0, 0, 1, 1)
     }
 
     SubShader
@@ -47,6 +48,7 @@ Shader "ReactUI/Image"
             float4 _Radii;
             float _Opacity;
             float4 _Tint;
+            float4 _UVRect;
 
             // SDF for a rounded rectangle centered at origin
             float roundedRectSDF(float2 p, float2 halfSize, float r)
@@ -75,8 +77,9 @@ Shader "ReactUI/Image"
 
             float4 frag(v2f i) : SV_Target
             {
-                // Sample the image texture
-                float4 texColor = tex2D(_MainTex, i.uv);
+                // The quad's UVs always span 0..1 so the corner mask below lines up with the quad; which part of
+                // the texture shows (object-fit cover/none crop it) comes from _UVRect instead.
+                float4 texColor = tex2D(_MainTex, _UVRect.xy + i.uv * _UVRect.zw);
                 texColor *= _Tint;
                 texColor *= i.color;
 

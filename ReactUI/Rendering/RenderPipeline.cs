@@ -174,6 +174,7 @@ public class RenderPipeline
                 ClipRect = clipRect,
                 ZOrder = zOrder,
                 Texture = style.BackgroundImage,
+                ImageRegion = style.BackgroundImageRegion,
                 ObjectFit = style.ObjectFit ?? Style.ObjectFit.Cover,
                 ImageTint = style.ImageTint?.ToUnityColor() ?? Color.white,
                 BorderRadiusTL = System.Math.Max(0, radiusTL - inset),
@@ -774,10 +775,21 @@ public class RenderPipeline
 
         // Contain letterboxes: the whole texture is shown in a smaller quad. The other modes fill the box and
         // choose which part of the texture to show, which is a UV crop.
-        var contain = cmd.ObjectFit == Style.ObjectFit.Contain ||
-                      (cmd.ObjectFit == Style.ObjectFit.ScaleDown && (cmd.Texture.width > cmd.Rect.Width || cmd.Texture.height > cmd.Rect.Height));
+        var contain = cmd.ImageRegion == null &&
+                      (cmd.ObjectFit == Style.ObjectFit.Contain ||
+                       (cmd.ObjectFit == Style.ObjectFit.ScaleDown && (cmd.Texture.width > cmd.Rect.Width || cmd.Texture.height > cmd.Rect.Height)));
         var dest = contain ? FitInside(cmd.Texture, cmd.Rect) : cmd.Rect;
-        var uvRect = contain ? new Core.Rect(0, 0, 1, 1) : ComputeObjectFitUV(cmd.Texture, cmd.Rect, cmd.ObjectFit);
+        var uvRect = cmd.ImageRegion is { } region ? new Core.Rect(region.X, region.Y, region.Width, region.Height)
+            : contain ? new Core.Rect(0, 0, 1, 1)
+            : ComputeObjectFitUV(cmd.Texture, cmd.Rect, cmd.ObjectFit);
+
+        // The shader masks rounded corners from the quad's UVs, so those have to span 0..1 and the crop travels
+        // separately. A bundle built before _UVRect existed still gets the crop through the vertex UVs.
+        if (_imageMaterial.HasProperty("_UVRect"))
+        {
+            _imageMaterial.SetVector("_UVRect", new Vector4(uvRect.X, uvRect.Y, uvRect.Width, uvRect.Height));
+            uvRect = new Core.Rect(0, 0, 1, 1);
+        }
 
         _imageMaterial.SetTexture("_MainTex", cmd.Texture);
         _imageMaterial.SetColor("_Tint", cmd.ImageTint);
