@@ -9,12 +9,15 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   PROJECT_NAME: ReactUI
   PROJECT_DIR: ReactUI
   PROJECT_FILE: ReactUI
+  CLAZAPI_VERSION: v1.13.7
+  # Space-separated owner/repo@tag:asset.dll, e.g. ClazAU/au-reactui@v1.1.0:ReactUI.dll
+  EXTRA_DLLS: ''
   DOTNET_NOLOGO: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
@@ -29,12 +32,11 @@ jobs:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 1
-        fetch-tags: true
 
     - name: Setup .NET
       uses: actions/setup-dotnet@v5
       with:
-        dotnet-version: '6.0.x'
+        dotnet-version: '10.0.x'
 
     - name: Cache NuGet packages
       uses: actions/cache@v4
@@ -51,16 +53,30 @@ jobs:
         echo "version=$version" >> $GITHUB_OUTPUT
         echo "Version: $version"
 
+    # Asks the remote because a depth-1 checkout never has tags that point at older commits.
     - name: Check if release needed
       id: check_release
+      env:
+        VERSION: ${{ steps.get_version.outputs.version }}
       run: |
-        if git tag -l "v${{ steps.get_version.outputs.version }}" | grep -q .; then
+        tag=$(git ls-remote --tags origin "refs/tags/v$VERSION")
+        if [ -n "$tag" ]; then
           echo "should_release=false" >> $GITHUB_OUTPUT
-          echo "Tag v${{ steps.get_version.outputs.version }} already exists, skipping release"
+          echo "Tag v$VERSION already exists, skipping release"
         else
           echo "should_release=true" >> $GITHUB_OUTPUT
-          echo "Will create release for v${{ steps.get_version.outputs.version }}"
+          echo "Will create release for v$VERSION"
         fi
+
+    - name: List private dependency repos
+      id: deps
+      run: |
+        repos="au-clazapi"
+        for spec in $EXTRA_DLLS; do
+          repo="${spec%%[@:]*}"
+          case "$repo" in ClazAU/*) repos="$repos,${repo#ClazAU/}" ;; esac
+        done
+        echo "repos=$repos" >> $GITHUB_OUTPUT
 
     - name: Generate GitHub App token
       id: app-token
@@ -69,13 +85,34 @@ jobs:
         app-id: ${{ secrets.APP_ID }}
         private-key: ${{ secrets.APP_PRIVATE_KEY }}
         owner: ClazAU
+        repositories: ${{ steps.deps.outputs.repos }}
+        permission-contents: read
 
     - name: Download ClazAPI
       run: |
         mkdir -p /tmp/AmongUs/BepInEx/plugins
-        gh release download --repo ClazAU/au-clazapi --pattern 'ClazAPI.dll' --dir /tmp/AmongUs/BepInEx/plugins
+        gh release download "$CLAZAPI_VERSION" --repo ClazAU/au-clazapi --pattern 'ClazAPI.dll' --dir /tmp/AmongUs/BepInEx/plugins
       env:
         GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+    - name: Download extra plugin DLLs
+      if: env.EXTRA_DLLS != ''
+      run: |
+        for spec in $EXTRA_DLLS; do
+          source="${spec%%:*}"
+          repo="${source%%@*}"
+          tag="${source#*@}"
+          if [ "$tag" = "$source" ]; then
+            echo "::error::EXTRA_DLLS entry '$spec' has no @tag; pin the release it builds against"
+            exit 1
+          fi
+          token="$APP_TOKEN"
+          case "$repo" in ClazAU/*) ;; *) token="$DEFAULT_TOKEN" ;; esac
+          GH_TOKEN="$token" gh release download "$tag" --repo "$repo" --pattern "${spec#*:}" --dir /tmp/AmongUs/BepInEx/plugins
+        done
+      env:
+        APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        DEFAULT_TOKEN: ${{ github.token }}
 
     - name: Restore dependencies
       run: dotnet restore "$PROJECT_DIR/$PROJECT_FILE.csproj"
@@ -106,6 +143,8 @@ jobs:
         path: ${{ env.PROJECT_DIR }}/bin/Release/net6.0/${{ env.PROJECT_NAME }}.dll
         retention-days: 7
 
+    # Runs before the release on purpose: a failed upload stops the job before the tag exists,
+    # so the next run retries it instead of skipping a version the panel never received.
     - name: Upload to Panel API
       if: github.event_name != 'pull_request' && steps.check_release.outputs.should_release == 'true'
       env:
@@ -114,13 +153,13 @@ jobs:
         VERSION: ${{ steps.get_version.outputs.version }}
       run: |
         if [ -z "$PANEL_API_URL" ] || [ -z "$PANEL_API_KEY" ]; then
-          echo "::warning::PANEL_API_URL or PANEL_API_KEY not configured, skipping upload"
-          exit 0
+          echo "::error::PANEL_API_URL or PANEL_API_KEY not configured"
+          exit 1
         fi
 
         echo "Uploading $PROJECT_NAME v$VERSION to panel..."
 
-        status=$(curl -sS -o response.txt -w '%{http_code}' \
+        status=$(curl -sS --retry 2 --retry-delay 10 --max-time 300 -o response.txt -w '%{http_code}' \
           -X POST "$PANEL_API_URL/api/v3/mods/$PROJECT_NAME/versions" \
           -H "Authorization: Bearer $PANEL_API_KEY" \
           -F "version=$VERSION" \
@@ -130,8 +169,9 @@ jobs:
         cat response.txt
         case "$status" in
           2??) echo "Upload successful (HTTP $status)" ;;
-          404) echo "::warning::Mod '$PROJECT_NAME' is not registered on the panel; create it there first" ;;
-          *)   echo "::warning::Upload failed with HTTP $status" ;;
+          409) echo "::notice::v$VERSION is already on the panel" ;;
+          404) echo "::warning::Mod '$PROJECT_NAME' is not registered on the panel; register it, then upload v$VERSION by hand or bump the version" ;;
+          *)   echo "::error::Panel upload failed with HTTP $status; no release was created, re-run the workflow to retry"; exit 1 ;;
         esac
 
     - name: Create Release
