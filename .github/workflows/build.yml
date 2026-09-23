@@ -132,7 +132,7 @@ jobs:
     # Same plugin without the JSX runtime, for mods that only use the C# API.
     - name: Build minimal
       run: |
-        dotnet build "$PROJECT_DIR/$PROJECT_FILE.csproj" --no-restore --configuration Release -p:AmongUs=/tmp/AmongUs -p:Minimal=true -p:SkipDeploy=true -p:OutDir=$PROJECT_DIR/bin/Release/minimal/
+        dotnet build "$PROJECT_DIR/$PROJECT_FILE.csproj" --no-restore --configuration Release -p:AmongUs=/tmp/AmongUs -p:Minimal=true -p:SkipDeploy=true -p:OutDir="$GITHUB_WORKSPACE/$PROJECT_DIR/bin/Release/minimal/"
         cp "$PROJECT_DIR/bin/Release/minimal/$PROJECT_NAME.dll" "$PROJECT_DIR/bin/Release/net6.0/$PROJECT_NAME.Minimal.dll"
 
     - name: Upload build artifact
