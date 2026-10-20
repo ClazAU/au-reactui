@@ -126,6 +126,36 @@ jobs:
         find ~/.nuget/packages/amongus.gamelibs.steam -path '*/lib/*' -name '*.dll' -exec cp -n {} /tmp/AmongUs/BepInEx/interop/ \; 2>/dev/null || true
         ls /tmp/AmongUs/BepInEx/core | wc -l
 
+    # The launcher brings a mod's libraries only through the dependencies its panel version declares, and the panel
+    # stores only what the upload sends: restored packages (exact where the csproj pins), CLAZAPI_VERSION and EXTRA_DLLS.
+    - name: List panel dependencies
+      id: panel_deps
+      run: |
+        deps=$(python3 - "$PROJECT_DIR/obj/project.assets.json" "$PROJECT_DIR/$PROJECT_FILE.csproj" <<'EOF'
+        import json, os, re, sys
+        packages = {"ClazAU.ClazAPI": "ClazAPI", "ClazAU.MiraAPI": "MiraAPI", "AllOfUs.MiraAPI": "MiraAPI", "Reactor": "Reactor"}
+        core = lambda version: re.split("[-+]", version.lstrip("v"))[0]
+        assets = json.load(open(sys.argv[1]))
+        declared = {name: dep.get("version", "") for framework in assets["project"]["frameworks"].values()
+                    for name, dep in framework.get("dependencies", {}).items()}
+        deps = {}
+        for key in assets["libraries"]:
+            package, version = key.split("/")
+            if package in packages:
+                exact = re.fullmatch(r"\[([^,\]]+)(?:,\s*\1)?\]", declared.get(package, ""))
+                deps[packages[package]] = ("=" if exact else ">=") + core(version)
+        if os.environ.get("CLAZAPI_VERSION") and re.search(r'<Reference Include="[^"]*ClazAPI', open(sys.argv[2]).read()):
+            deps.setdefault("ClazAPI", ">=" + core(os.environ["CLAZAPI_VERSION"]))
+        for spec in os.environ.get("EXTRA_DLLS", "").split():
+            tag, asset = spec.split("@", 1)[1].split(":", 1)
+            deps.setdefault(os.path.splitext(asset)[0].removesuffix(".Minimal"), ">=" + core(tag))
+        deps.pop(os.environ.get("PROJECT_NAME"), None)
+        print(json.dumps([{"mod_name": n, "version_constraint": c} for n, c in sorted(deps.items())], separators=(",", ":")))
+        EOF
+        )
+        echo "dependencies=$deps" >> $GITHUB_OUTPUT
+        echo "Dependencies: $deps"
+
     - name: Build
       run: dotnet build "$PROJECT_DIR/$PROJECT_FILE.csproj" --no-restore --configuration Release -p:AmongUs=/tmp/AmongUs
 
@@ -151,6 +181,7 @@ jobs:
         PANEL_API_URL: ${{ secrets.PANEL_API_URL }}
         PANEL_API_KEY: ${{ secrets.PANEL_API_KEY }}
         VERSION: ${{ steps.get_version.outputs.version }}
+        DEPENDENCIES: ${{ steps.panel_deps.outputs.dependencies }}
       run: |
         if [ -z "$PANEL_API_URL" ] || [ -z "$PANEL_API_KEY" ]; then
           echo "::error::PANEL_API_URL or PANEL_API_KEY not configured"
@@ -164,6 +195,7 @@ jobs:
           -H "Authorization: Bearer $PANEL_API_KEY" \
           -F "version=$VERSION" \
           -F "notes=Built from ${{ github.sha }}" \
+          --form-string "dependencies=$DEPENDENCIES" \
           -F "file=@$PROJECT_DIR/bin/Release/net6.0/$PROJECT_NAME.dll")
 
         cat response.txt
