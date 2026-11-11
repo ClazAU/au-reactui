@@ -191,7 +191,7 @@ jobs:
         echo "Uploading $PROJECT_NAME v$VERSION to panel..."
 
         status=$(curl -sS --retry 2 --retry-delay 10 --max-time 300 -o response.txt -w '%{http_code}' \
-          -X POST "$PANEL_API_URL/api/v3/mods/$PROJECT_NAME/versions" \
+          -X POST "$PANEL_API_URL/api/v4/mods/$PROJECT_NAME/versions" \
           -H "Authorization: Bearer $PANEL_API_KEY" \
           -F "version=$VERSION" \
           -F "notes=Built from ${{ github.sha }}" \
@@ -202,7 +202,7 @@ jobs:
         case "$status" in
           2??) echo "Upload successful (HTTP $status)" ;;
           409) echo "::notice::v$VERSION is already on the panel" ;;
-          404) echo "::warning::Mod '$PROJECT_NAME' is not registered on the panel; register it, then upload v$VERSION by hand or bump the version" ;;
+          404) echo "::error::Mod '$PROJECT_NAME' is not registered on the panel; register it, then re-run the workflow"; exit 1 ;;
           *)   echo "::error::Panel upload failed with HTTP $status; no release was created, re-run the workflow to retry"; exit 1 ;;
         esac
 
